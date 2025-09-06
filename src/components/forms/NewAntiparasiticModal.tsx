@@ -13,7 +13,13 @@ import { useToast } from '@/hooks/use-toast';
 import { format, addDays } from 'date-fns';
 import { Plus } from 'lucide-react';
 
-export default function NewAntiparasiticModal({ children, selectedClientId, selectedPetId }) {
+interface NewAntiparasiticModalProps {
+  children?: React.ReactNode;
+  selectedPetId?: number;
+  selectedClientId?: number;
+}
+
+export default function NewAntiparasiticModal({ children, selectedClientId, selectedPetId }: NewAntiparasiticModalProps) {
   const { clients, pets, addAntiparasitic, getAntiparasiticProtocolsBySpecies, addAppointment } = useClients();
   const { settings } = useSettings();
   const { toast } = useToast();
@@ -35,6 +41,9 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
     sideEffects: ''
   });
   const [selectedProtocols, setSelectedProtocols] = useState<AntiparasiticProtocol[]>([]);
+  
+  // Protection contre undefined
+  const safeSelectedProtocols = selectedProtocols || [];
   const [nextDueDates, setNextDueDates] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -44,9 +53,9 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
 
   // Initialize defaults for each protocol interval
   useEffect(() => {
-    if (selectedProtocols.length && formData.dateGiven) {
+    if (safeSelectedProtocols.length && formData.dateGiven) {
       const defaults: Record<string, string> = {};
-      selectedProtocols.forEach(protocol => {
+      safeSelectedProtocols.forEach(protocol => {
         protocol.intervals.forEach(interval => {
           const key = `${protocol.id}-${interval.offsetDays}`;
           defaults[key] = format(
@@ -59,7 +68,7 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
     } else {
       setNextDueDates({});
     }
-  }, [selectedProtocols, formData.dateGiven]);
+  }, [safeSelectedProtocols, formData.dateGiven]);
 
   const availableProtocols = formData.petId
     ? getAntiparasiticProtocolsBySpecies(
@@ -75,10 +84,14 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
     }
     const client = clients.find(c => c.id === parseInt(formData.clientId));
     const pet = pets.find(p => p.id === parseInt(formData.petId));
-    if (!client || !pet) return;
+    if (!client || !pet) {
+      toast({ title: 'Erreur', description: 'Client ou animal introuvable.', variant: 'destructive' });
+      return;
+    }
 
-    if (selectedProtocols.length > 0) {
-      selectedProtocols.forEach(protocol => {
+    if (safeSelectedProtocols.length > 0) {
+      // Traiter chaque protocole sélectionné
+      safeSelectedProtocols.forEach(protocol => {
         protocol.intervals.forEach(interval => {
           const key = `${protocol.id}-${interval.offsetDays}`;
           addAntiparasitic({
@@ -104,12 +117,13 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
           });
         });
       });
+      
       // Programmer rappels antiparasitaires
-      selectedProtocols.forEach(protocol => {
+      safeSelectedProtocols.forEach(protocol => {
         (protocol.intervals || []).forEach(interval => {
           const key = `${protocol.id}-${interval.offsetDays}`;
           const dueDate = nextDueDates[key];
-          if (dueDate) {
+          if (dueDate && interval.offsetDays > 0) { // Seuls les rappels futurs
             addAppointment({
               clientId: client.id,
               clientName: client.name,
@@ -126,17 +140,22 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
           }
         });
       });
-      toast({ title: 'Traitements ajoutés', description: `${selectedProtocols.length} traitements ajoutés et rappels programmés.` });
+      
+      toast({ 
+        title: 'Traitements ajoutés', 
+        description: `${safeSelectedProtocols.reduce((total, p) => total + p.intervals.length, 0)} traitement(s) enregistré(s) dans le dossier médical et rappels programmés.` 
+      });
     } else {
-      // Single entry without protocol
+      // Traitement manuel sans protocole
+      const productName = formData.notes || 'Traitement antiparasitaire';
       addAntiparasitic({
         clientId: client.id,
         clientName: client.name,
         petId: pet.id,
         petName: pet.name,
-        productName: formData.notes, // or productName field if added
+        productName: productName,
         productType: 'external' as any,
-        targetParasites: 'flea_tick' as any,
+        targetParasites: 'Non spécifié' as any,
         dateGiven: formData.dateGiven,
         nextDueDate: formData.nextDueDate,
         dosage: formData.dosage,
@@ -150,12 +169,49 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
         cost: formData.cost,
         sideEffects: formData.sideEffects
       });
-      toast({ title: 'Traitement ajouté', description: `Traitement pour ${pet.name} ajouté.` });
+      
+      // Programmer rappel si date spécifiée
+      if (formData.nextDueDate) {
+        addAppointment({
+          clientId: client.id,
+          clientName: client.name,
+          petId: pet.id,
+          petName: pet.name,
+          date: formData.nextDueDate,
+          time: '09:00',
+          type: 'consultation',
+          duration: 15,
+          reason: `Rappel antiparasitaire ${productName}`,
+          status: 'scheduled',
+          reminderSent: false
+        });
+      }
+      
+      toast({ 
+        title: 'Traitement ajouté', 
+        description: `Traitement pour ${pet.name} enregistré dans le dossier médical.` 
+      });
     }
+
+    console.log('Antiparasitaire ajouté avec succès - Données synchronisées dans le dossier médical');
 
     // Reset and close
     setSelectedProtocols([]);
-    setFormData({ clientId: formData.clientId, petId: formData.petId, dateGiven: format(new Date(), 'yyyy-MM-dd'), nextDueDate: '', dosage: '', administrationRoute: '', veterinarian: '', notes: '', batchNumber: '', manufacturer: '', weight: '', cost: '', sideEffects: '' });
+    setFormData({ 
+      clientId: selectedClientId?.toString() || '', 
+      petId: selectedPetId?.toString() || '', 
+      dateGiven: format(new Date(), 'yyyy-MM-dd'), 
+      nextDueDate: '', 
+      dosage: '', 
+      administrationRoute: '', 
+      veterinarian: '', 
+      notes: '', 
+      batchNumber: '', 
+      manufacturer: '', 
+      weight: '', 
+      cost: '', 
+      sideEffects: '' 
+    });
     setOpen(false);
   };
 
@@ -176,7 +232,13 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
               <Select value={formData.clientId} onValueChange={v => setFormData(prev => ({ ...prev, clientId: v, petId: '' }))}>
                 <SelectTrigger><SelectValue placeholder="Sélectionner un client" /></SelectTrigger>
                 <SelectContent>
-                  {clients.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>)}
+                  {clients && Array.isArray(clients) && clients.length > 0 ? (
+                    clients.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>)
+                  ) : (
+                    <SelectItem value="no-clients" disabled>
+                      Aucun client trouvé
+                    </SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -196,7 +258,7 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
               <Label>Protocoles suggérés ({pets.find(p => p.id===parseInt(formData.petId))?.type})</Label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {availableProtocols.map(protocol => {
-                  const checked = selectedProtocols.some(p => p.id === protocol.id);
+                  const checked = safeSelectedProtocols.some(p => p.id === protocol.id);
                   return (
                     <div key={protocol.id} className="flex items-center p-2 border rounded hover:bg-muted/50">
                       <Checkbox checked={checked} onCheckedChange={val => val ? setSelectedProtocols(prev => [...prev, protocol]) : setSelectedProtocols(prev => prev.filter(x => x.id !== protocol.id))} />
@@ -211,12 +273,12 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
             </div>
           )}
           {/* Selected Protocols Overview */}
-          {selectedProtocols.length > 0 ? (
+          {safeSelectedProtocols.length > 0 ? (
             <Card className="mb-4">
               <CardHeader><CardTitle className="text-sm">Protocoles sélectionnés</CardTitle></CardHeader>
               <CardContent>
                 <ul className="list-disc list-inside text-sm">
-                  {selectedProtocols.map(p => <li key={p.id}>{p.name}</li>)}
+                  {safeSelectedProtocols.map(p => <li key={p.id}>{p.name}</li>)}
                 </ul>
               </CardContent>
             </Card>
@@ -238,7 +300,7 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
               <Label>Date d'administration *</Label>
               <Input type="date" value={formData.dateGiven} onChange={e=>setFormData(prev=>({...prev,dateGiven:e.target.value}))} required />
             </div>
-            {!selectedProtocols.length && (
+            {!safeSelectedProtocols.length && (
               <div>
                 <Label>Date de rappel</Label>
                 <Input type="date" value={formData.nextDueDate} onChange={e=>setFormData(prev=>({...prev,nextDueDate:e.target.value}))} />
@@ -246,9 +308,9 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
             )}
           </div>
           {/* Interval-specific dates */}
-          {selectedProtocols.length > 0 && (
+          {safeSelectedProtocols.length > 0 && (
             <div className="space-y-4 mb-4">
-              {selectedProtocols.map(protocol => (
+              {safeSelectedProtocols.map(protocol => (
                 <div key={protocol.id} className="space-y-2">
                   <div className="font-medium text-sm">Étapes pour {protocol.name}</div>
                   {protocol.intervals.map(interval => {

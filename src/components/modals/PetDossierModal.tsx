@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Calendar, FileText, Stethoscope, Syringe, AlertCircle, TrendingUp, TrendingDown, Activity, Weight, Thermometer, Plus, Printer, Bug, Award, Edit } from "lucide-react";
+import { Calendar, FileText, Stethoscope, Syringe, AlertCircle, TrendingUp, TrendingDown, Activity, Weight, Thermometer, Plus, Printer, Bug, Award, Edit, CheckCircle } from "lucide-react";
 import { Pet, Consultation, useClients, Antiparasitic } from "@/contexts/ClientContext";
 import NewVaccinationModal from '@/components/forms/NewVaccinationModal';
 import NewAntiparasiticModal from '@/components/forms/NewAntiparasiticModal';
@@ -204,6 +204,11 @@ export function PetDossierModal({ open, onOpenChange, pet }: PetDossierModalProp
   const petVaccinations = getVaccinationsByPetId(pet.id);
   // Récupérer tous les traitements antiparasitaires de cet animal
   const petAntiparasitics = getAntiparasiticsByPetId(pet.id);
+  console.log('🔍 PetDossierModal - DEBUG ANTIPARASITICS:');
+  console.log('   Pet ID:', pet.id);
+  console.log('   Pet Name:', pet.name);
+  console.log('   Antiparasitics found:', petAntiparasitics);
+  console.log('   Length:', petAntiparasitics?.length || 0);
   
   // Trier les consultations par date (plus récentes en premier)
   const sortedConsultations = [...petConsultations].sort((a, b) => 
@@ -537,12 +542,35 @@ export function PetDossierModal({ open, onOpenChange, pet }: PetDossierModalProp
           <div style="margin: 30px 0; border: 1px solid #eee; padding: 20px; border-radius: 5px;">
             <h3 style="margin: 0 0 15px 0; color: #333; border-bottom: 2px solid #eee; padding-bottom: 10px;">Historique des Traitements Antiparasitaires (${petAntiparasitics.length})</h3>
             ${petAntiparasitics.length > 0 ? petAntiparasitics.map(a => `
-              <div style="margin: 10px 0; padding: 10px; border-left: 3px solid #4CAF50; background: #f0f8f0;">
-                <h4 style="margin: 0 0 10px 0;">${a.productName} - ${new Date(a.dateGiven).toLocaleDateString('fr-FR')}</h4>
-                <p><strong>Type:</strong> ${a.productType || 'Non spécifié'}</p>
+              <div style="margin: 15px 0; padding: 15px; border-left: 4px solid #9C27B0; background: #f3e5f5; border-radius: 5px;">
+                <h4 style="margin: 0 0 10px 0; color: #7B1FA2;">${a.productName} - ${new Date(a.dateGiven).toLocaleDateString('fr-FR')}</h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 10px 0;">
+                  <div>
+                    <p><strong>Type de produit:</strong> ${a.productType || 'Non spécifié'}</p>
+                    <p><strong>Parasites ciblés:</strong> ${a.targetParasites || 'Non spécifié'}</p>
+                    <p><strong>Voie d'administration:</strong> ${a.administrationRoute || 'Non spécifié'}</p>
+                    <p><strong>Dosage:</strong> ${a.dosage || 'Non spécifié'}</p>
+                  </div>
+                  <div>
                 <p><strong>Prochain traitement:</strong> ${a.nextDueDate ? new Date(a.nextDueDate).toLocaleDateString('fr-FR') : 'Non spécifié'}</p>
                 <p><strong>Vétérinaire:</strong> ${a.veterinarian || 'Non spécifié'}</p>
-                ${a.notes ? `<p><strong>Notes:</strong> ${a.notes}</p>` : ''}
+                    <p><strong>Statut:</strong> ${a.status === 'completed' ? 'Terminé' : a.status === 'scheduled' ? 'Planifié' : a.status === 'overdue' ? 'En retard' : 'Manqué'}</p>
+                    ${a.cost ? `<p><strong>Coût:</strong> ${a.cost} €</p>` : ''}
+                  </div>
+                </div>
+                ${a.batchNumber ? `<p><strong>Numéro de lot:</strong> ${a.batchNumber}</p>` : ''}
+                ${a.manufacturer ? `<p><strong>Fabricant:</strong> ${a.manufacturer}</p>` : ''}
+                ${a.weight ? `<p><strong>Poids de l'animal:</strong> ${a.weight}</p>` : ''}
+                ${a.notes ? `
+                  <div style="margin: 10px 0; padding: 10px; background: rgba(156, 39, 176, 0.1); border-radius: 3px;">
+                    <p><strong>Notes:</strong> ${a.notes}</p>
+                  </div>
+                ` : ''}
+                ${a.sideEffects ? `
+                  <div style="margin: 10px 0; padding: 10px; background: #ffebee; border: 1px solid #f44336; border-radius: 3px;">
+                    <p style="color: #d32f2f;"><strong>⚠️ Effets indésirables:</strong> ${a.sideEffects}</p>
+                  </div>
+                ` : ''}
               </div>
             `).join('') : '<p style="text-align: center; color: #666; font-style: italic;">Aucun traitement antiparasitaire enregistré</p>'}
           </div>
@@ -1275,22 +1303,184 @@ export function PetDossierModal({ open, onOpenChange, pet }: PetDossierModalProp
                   <CardContent className="p-8 text-center text-muted-foreground">
                     <Bug className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
                     <p>Aucun traitement antiparasitaire enregistré</p>
+                    <p className="text-sm">Ajoutez des traitements depuis l'onglet Antiparasitaires</p>
                   </CardContent>
                 </Card>
               ) : (
                 <div className="space-y-4">
+                  {/* Statistiques antiparasitaires */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                    <Card>
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-green-100 rounded-full">
+                            <Bug className="h-4 w-4 text-green-600" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-600">Total</p>
+                            <p className="text-xl font-bold">{sortedAntiparasitics.length}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card>
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-blue-100 rounded-full">
+                            <CheckCircle className="h-4 w-4 text-blue-600" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-600">Complétés</p>
+                            <p className="text-xl font-bold">
+                              {sortedAntiparasitics.filter(a => a.status === 'completed').length}
+                            </p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-red-100 rounded-full">
+                            <AlertCircle className="h-4 w-4 text-red-600" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-600">En retard</p>
+                            <p className="text-xl font-bold">
+                              {sortedAntiparasitics.filter(a => a.status === 'overdue').length}
+                            </p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-orange-100 rounded-full">
+                            <Calendar className="h-4 w-4 text-orange-600" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-600">Planifiés</p>
+                            <p className="text-xl font-bold">
+                              {sortedAntiparasitics.filter(a => a.status === 'scheduled').length}
+                            </p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Liste des traitements */}
+                  <div className="space-y-3">
                   {sortedAntiparasitics.map((treatment) => (
                     <Card key={treatment.id} className="hover:shadow-md transition-shadow">
                       <CardContent className="p-4">
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div><strong>Date:</strong> {new Date(treatment.dateGiven).toLocaleDateString('fr-FR')}</div>
-                          <div><strong>Produit:</strong> {treatment.productName}</div>
-                          <div><strong>Prochain rappel:</strong> {treatment.nextDueDate || 'N/A'}</div>
-                          <div><strong>Vétérinaire:</strong> {treatment.veterinarian}</div>
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <Bug className="h-5 w-5 text-blue-600" />
+                                <h4 className="font-semibold text-lg">{treatment.productName}</h4>
+                                <Badge 
+                                  className={
+                                    treatment.status === 'completed' ? 'bg-green-100 text-green-800 border-green-200' :
+                                    treatment.status === 'overdue' ? 'bg-red-100 text-red-800 border-red-200' :
+                                    treatment.status === 'scheduled' ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                                    'bg-orange-100 text-orange-800 border-orange-200'
+                                  }
+                                >
+                                  {treatment.status === 'completed' ? 'Terminé' :
+                                   treatment.status === 'overdue' ? 'En retard' :
+                                   treatment.status === 'scheduled' ? 'Planifié' : 'Manqué'}
+                                </Badge>
+                              </div>
+                              
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                                <div>
+                                  <p className="text-gray-600">Date administrée</p>
+                                  <p className="font-medium">{new Date(treatment.dateGiven).toLocaleDateString('fr-FR')}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-600">Prochain traitement</p>
+                                  <p className="font-medium">{treatment.nextDueDate ? new Date(treatment.nextDueDate).toLocaleDateString('fr-FR') : 'Non spécifié'}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-600">Type</p>
+                                  <p className="font-medium">{treatment.productType}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-600">Vétérinaire</p>
+                                  <p className="font-medium">{treatment.veterinarian}</p>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mt-3">
+                                <div>
+                                  <p className="text-gray-600">Parasites ciblés</p>
+                                  <p className="font-medium">{treatment.targetParasites}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-600">Dosage</p>
+                                  <p className="font-medium">{treatment.dosage || 'Non spécifié'}</p>
+                                </div>
+                              </div>
+
+                              {treatment.batchNumber && (
+                                <div className="mt-3 text-sm">
+                                  <p className="text-gray-600">Numéro de lot: <span className="font-medium">{treatment.batchNumber}</span></p>
+                                </div>
+                              )}
+
+                              {treatment.manufacturer && (
+                                <div className="mt-1 text-sm">
+                                  <p className="text-gray-600">Fabricant: <span className="font-medium">{treatment.manufacturer}</span></p>
+                                </div>
+                              )}
+
+                              {treatment.weight && (
+                                <div className="mt-1 text-sm">
+                                  <p className="text-gray-600">Poids de l'animal: <span className="font-medium">{treatment.weight}</span></p>
+                                </div>
+                              )}
+
+                              {treatment.cost && (
+                                <div className="mt-1 text-sm">
+                                  <p className="text-gray-600">Coût: <span className="font-medium">{treatment.cost} €</span></p>
+                                </div>
+                              )}
+
+                              {treatment.notes && (
+                                <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+                                  <p className="text-sm text-gray-700">
+                                    <strong>Notes:</strong> {treatment.notes}
+                                  </p>
+                                </div>
+                              )}
+
+                              {treatment.sideEffects && (
+                                <div className="mt-2 p-3 bg-red-50 rounded-lg border border-red-200">
+                                  <p className="text-sm text-red-700">
+                                    <strong>⚠️ Effets indésirables:</strong> {treatment.sideEffects}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex flex-col gap-2 ml-4">
+                              {treatment.nextDueDate && new Date(treatment.nextDueDate) <= new Date() && treatment.status !== 'completed' && (
+                                <Button size="sm" className="gap-2">
+                                  <Plus className="h-4 w-4" />
+                                  Rappel
+                                </Button>
+                              )}
+                            </div>
                         </div>
                       </CardContent>
                     </Card>
                   ))}
+                  </div>
                 </div>
               )}
             </TabsContent>

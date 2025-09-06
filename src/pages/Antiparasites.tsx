@@ -61,6 +61,7 @@ const getStatusIcon = (status: string) => {
 
 const AntiparasiteCalendar: React.FC = () => {
   const { antiparasitics, pets, clients } = useClients();
+  console.log('Antiparasites page - antiparasitics:', antiparasitics);
   const [currentDate, setCurrentDate] = useState(new Date());
   
   // Générer les jours du mois

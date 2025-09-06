@@ -1088,8 +1088,55 @@ const initialVaccinations: Vaccination[] = [
   }
 ];
 
-// Données initiales des antiparasites (vides pour commencer)
-const initialAntiparasitics: Antiparasitic[] = [];
+// Données initiales des antiparasites avec quelques exemples pour le test
+const initialAntiparasitics: Antiparasitic[] = [
+  {
+    id: 1,
+    petId: 1, // Bella
+    petName: "Bella",
+    clientId: 1,
+    clientName: "Marie Dubois",
+    productName: "Frontline Combo Spot-On",
+    productType: 'flea_tick',
+    targetParasites: 'Puces, Tiques, Poux broyeurs',
+    dateGiven: '2024-01-10',
+    nextDueDate: '2024-02-10',
+    dosage: '1 pipette',
+    administrationRoute: 'topical',
+    veterinarian: 'Dr. Martin',
+    notes: 'Application entre les omoplates',
+    batchNumber: 'FRC2024-001',
+    manufacturer: 'Boehringer Ingelheim',
+    weight: '28kg',
+    status: 'completed',
+    cost: '25.50',
+    sideEffects: '',
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: 2,
+    petId: 2, // Whiskers
+    petName: "Whiskers",
+    clientId: 2,
+    clientName: "Jean Martin",
+    productName: "Milbemax Chat",
+    productType: 'worming',
+    targetParasites: 'Vers ronds, Vers plats, Vers du cœur',
+    dateGiven: '2024-01-05',
+    nextDueDate: '2024-04-05',
+    dosage: '1/2 comprimé',
+    administrationRoute: 'oral',
+    veterinarian: 'Dr. Dupont',
+    notes: 'Donné avec la nourriture',
+    batchNumber: 'MLX2024-008',
+    manufacturer: 'Novartis',
+    weight: '4.5kg',
+    status: 'completed',
+    cost: '18.00',
+    sideEffects: '',
+    createdAt: new Date().toISOString()
+  }
+];
 
 // Protocoles antiparasitaires réalistes basés sur la pratique vétérinaire
 const initialAntiparasiticProtocols: AntiparasiticProtocol[] = [
@@ -1457,6 +1504,12 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       const savedFarmInterventions = localStorage.getItem('vetpro-farmInterventions');
       const savedVaccinations = localStorage.getItem('vetpro-vaccinations');
       const savedVaccinationProtocols = localStorage.getItem('vetpro-vaccinationProtocols');
+      const savedAntiparasitics = localStorage.getItem('vetpro-antiparasitics');
+      const savedAntiparasiticProtocols = localStorage.getItem('vetpro-antiparasiticProtocols');
+      console.log('🔍 loadDataFromStorage - DEBUGGING ANTIPARASITICS:');
+      console.log('   savedAntiparasitics raw:', savedAntiparasitics);
+      console.log('   localStorage vetpro-antiparasitics exists:', !!localStorage.getItem('vetpro-antiparasitics'));
+      console.log('   localStorage content:', localStorage.getItem('vetpro-antiparasitics'));
       
       if (savedClients && savedPets) {
         const parsedClients = JSON.parse(savedClients);
@@ -1469,6 +1522,13 @@ export function ClientProvider({ children }: { children: ReactNode }) {
         const parsedFarmInterventions = savedFarmInterventions ? JSON.parse(savedFarmInterventions) : initialFarmInterventions;
         const parsedVaccinations = savedVaccinations ? JSON.parse(savedVaccinations) : initialVaccinations;
         const parsedVaccinationProtocols = savedVaccinationProtocols ? JSON.parse(savedVaccinationProtocols) : initialVaccinationProtocols;
+        const parsedAntiparasitics = savedAntiparasitics ? JSON.parse(savedAntiparasitics) : initialAntiparasitics;
+        const parsedAntiparasiticProtocols = savedAntiparasiticProtocols ? JSON.parse(savedAntiparasiticProtocols) : initialAntiparasiticProtocols;
+        console.log('✅ loadDataFromStorage - PARSED ANTIPARASITICS:');
+        console.log('   parsedAntiparasitics:', parsedAntiparasitics);
+        console.log('   Length:', parsedAntiparasitics?.length || 0);
+        console.log('   Should use initial?', !savedAntiparasitics);
+        console.log('   initialAntiparasitics length:', initialAntiparasitics.length);
         
         // Synchroniser les clients avec leurs animaux
         const synchronizedClients = parsedClients.map((client: Client) => ({
@@ -1486,7 +1546,9 @@ export function ClientProvider({ children }: { children: ReactNode }) {
 
           farmInterventions: parsedFarmInterventions,
           vaccinations: parsedVaccinations,
-          vaccinationProtocols: parsedVaccinationProtocols
+          vaccinationProtocols: parsedVaccinationProtocols,
+          antiparasitics: parsedAntiparasitics,
+          antiparasiticProtocols: parsedAntiparasiticProtocols
         };
       }
     } catch (error) {
@@ -1509,7 +1571,9 @@ export function ClientProvider({ children }: { children: ReactNode }) {
 
       farmInterventions: initialFarmInterventions,
       vaccinations: initialVaccinations,
-      vaccinationProtocols: initialVaccinationProtocols
+      vaccinationProtocols: initialVaccinationProtocols,
+      antiparasitics: initialAntiparasitics,
+      antiparasiticProtocols: initialAntiparasiticProtocols
     };
   };
 
@@ -1524,7 +1588,9 @@ export function ClientProvider({ children }: { children: ReactNode }) {
 
     farmInterventionsData: FarmIntervention[] = farmInterventions,
     vaccinationsData: Vaccination[] = vaccinations,
-    vaccinationProtocolsData: VaccinationProtocol[] = vaccinationProtocols
+    vaccinationProtocolsData: VaccinationProtocol[] = vaccinationProtocols,
+    antiparasiticsData: Antiparasitic[] = antiparasitics,
+    antiparasiticProtocolsData: AntiparasiticProtocol[] = antiparasiticProtocols
   ) => {
     try {
       localStorage.setItem('vetpro-clients', JSON.stringify(clientsData));
@@ -1537,6 +1603,9 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('vetpro-farmInterventions', JSON.stringify(farmInterventionsData));
       localStorage.setItem('vetpro-vaccinations', JSON.stringify(vaccinationsData));
       localStorage.setItem('vetpro-vaccinationProtocols', JSON.stringify(vaccinationProtocolsData));
+      localStorage.setItem('vetpro-antiparasitics', JSON.stringify(antiparasiticsData));
+      localStorage.setItem('vetpro-antiparasiticProtocols', JSON.stringify(antiparasiticProtocolsData));
+      console.log('saveDataToStorage - antiparasitics saved:', antiparasiticsData);
     } catch (error) {
       console.error('Erreur lors de la sauvegarde des données:', error);
     }
@@ -1553,25 +1622,37 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   const [farmInterventions, setFarmInterventions] = useState<FarmIntervention[]>(initialData.farmInterventions);
   const [vaccinations, setVaccinations] = useState<Vaccination[]>(initialData.vaccinations);
   const [vaccinationProtocols, setVaccinationProtocols] = useState<VaccinationProtocol[]>(initialData.vaccinationProtocols);
-  const [antiparasitics, setAntiparasitics] = useState<Antiparasitic[]>(initialAntiparasitics);
-  const [antiparasiticProtocols, setAntiparasiticProtocols] = useState<AntiparasiticProtocol[]>(initialAntiparasiticProtocols);
+  const [antiparasitics, setAntiparasitics] = useState<Antiparasitic[]>(initialData.antiparasitics);
+  const [antiparasiticProtocols, setAntiparasiticProtocols] = useState<AntiparasiticProtocol[]>(initialData.antiparasiticProtocols);
+  
+  console.log('🚀 ClientContext - ANTIPARASITICS DEBUG:');
+  console.log('   Initial antiparasitics from storage:', initialData.antiparasitics);
+  console.log('   Current antiparasitics state:', antiparasitics);
+  console.log('   State length:', antiparasitics?.length || 0);
 
-  // Charger les données antiparasitaires depuis localStorage
+  // Initialiser les protocoles antiparasitaires par défaut s'ils n'existent pas
   useEffect(() => {
-    const savedAntiparasitics = localStorage.getItem('vetpro-antiparasitics');
     const savedAntiparasiticProtocols = localStorage.getItem('vetpro-antiparasiticProtocols');
-    
-    if (savedAntiparasitics) {
-      setAntiparasitics(JSON.parse(savedAntiparasitics));
-    }
-    
-    if (savedAntiparasiticProtocols) {
-      setAntiparasiticProtocols(JSON.parse(savedAntiparasiticProtocols));
-    } else {
+    if (!savedAntiparasiticProtocols) {
       // Sauvegarder les protocoles par défaut s'ils n'existent pas
       localStorage.setItem('vetpro-antiparasiticProtocols', JSON.stringify(initialAntiparasiticProtocols));
     }
+
+    // Initialiser les antiparasitaires avec données d'exemple si localStorage est vide
+    const savedAntiparasitics = localStorage.getItem('vetpro-antiparasitics');
+    if (!savedAntiparasitics) {
+      console.log('🚀 Initialisation des antiparasitaires d\'exemple dans localStorage');
+      localStorage.setItem('vetpro-antiparasitics', JSON.stringify(initialAntiparasitics));
+      setAntiparasitics(initialAntiparasitics);
+    }
   }, []);
+
+  // Debug: Monitor antiparasitics state changes
+  useEffect(() => {
+    console.log('🔄 ANTIPARASITICS STATE CHANGED:');
+    console.log('   New length:', antiparasitics.length);
+    console.log('   Data:', antiparasitics);
+  }, [antiparasitics]);
 
   // Initialiser les statistiques de tous les clients existants
   useEffect(() => {
@@ -1765,6 +1846,21 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   };
 
   const resetData = () => {
+    console.log('🔄 RESET DATA - Remise à zéro complète des données');
+    
+    // Effacer toutes les données localStorage
+    localStorage.removeItem('vetpro-clients');
+    localStorage.removeItem('vetpro-pets');
+    localStorage.removeItem('vetpro-consultations');
+    localStorage.removeItem('vetpro-appointments');
+    localStorage.removeItem('vetpro-prescriptions');
+    localStorage.removeItem('vetpro-farms');
+    localStorage.removeItem('vetpro-farmInterventions');
+    localStorage.removeItem('vetpro-vaccinations');
+    localStorage.removeItem('vetpro-vaccinationProtocols');
+    localStorage.removeItem('vetpro-antiparasitics');
+    localStorage.removeItem('vetpro-antiparasiticProtocols');
+    
     const synchronizedClients = initialClients.map(client => ({
       ...client,
       pets: initialPets.filter(pet => pet.ownerId === client.id)
@@ -1778,11 +1874,19 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     setFarms(initialFarms);
     // setLivestock removed
     setFarmInterventions(initialFarmInterventions);
-    saveDataToStorage(synchronizedClients, initialPets, initialConsultations, initialAppointments, initialPrescriptions, initialFarms, initialFarmInterventions);
+    setVaccinations(initialVaccinations);
+    setVaccinationProtocols(initialVaccinationProtocols);
+    setAntiparasitics(initialAntiparasitics);
+    setAntiparasiticProtocols(initialAntiparasiticProtocols);
+    
+    // Forcer la sauvegarde
+    saveDataToStorage(synchronizedClients, initialPets, initialConsultations, initialAppointments, initialPrescriptions, initialFarms, initialFarmInterventions, initialVaccinations, initialVaccinationProtocols, initialAntiparasitics, initialAntiparasiticProtocols);
+    
+    console.log('✅ Reset terminé avec antiparasitaires d\'exemple:', initialAntiparasitics.length);
   };
 
   const exportData = () => {
-    const data = { clients, pets, consultations, appointments, prescriptions, farms, farmInterventions };
+    const data = { clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1794,7 +1898,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     URL.revokeObjectURL(url);
   };
 
-  const importData = (data: { clients: Client[], pets: Pet[], consultations: Consultation[], appointments?: Appointment[], prescriptions?: Prescription[], farms?: Farm[], farmInterventions?: FarmIntervention[] }) => {
+  const importData = (data: { clients: Client[], pets: Pet[], consultations: Consultation[], appointments?: Appointment[], prescriptions?: Prescription[], farms?: Farm[], farmInterventions?: FarmIntervention[], vaccinations?: Vaccination[], vaccinationProtocols?: VaccinationProtocol[], antiparasitics?: Antiparasitic[], antiparasiticProtocols?: AntiparasiticProtocol[] }) => {
     const synchronizedClients = data.clients.map(client => ({
       ...client,
       pets: data.pets.filter(pet => pet.ownerId === client.id)
@@ -1808,7 +1912,11 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     setFarms(data.farms || []);
     // setLivestock removed
     setFarmInterventions(data.farmInterventions || []);
-    saveDataToStorage(synchronizedClients, data.pets, data.consultations || [], data.appointments || [], data.prescriptions || [], data.farms || [], data.farmInterventions || []);
+    setVaccinations(data.vaccinations || []);
+    setVaccinationProtocols(data.vaccinationProtocols || []);
+    setAntiparasitics(data.antiparasitics || []);
+    setAntiparasiticProtocols(data.antiparasiticProtocols || []);
+    saveDataToStorage(synchronizedClients, data.pets, data.consultations || [], data.appointments || [], data.prescriptions || [], data.farms || [], data.farmInterventions || [], data.vaccinations || [], data.vaccinationProtocols || [], data.antiparasitics || [], data.antiparasiticProtocols || []);
   };
 
   const updateConsultation = (id: number, consultationData: Partial<Consultation>) => {
@@ -1835,10 +1943,19 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     const updatedAntiparasitics = [...antiparasitics, newAntiparasitic];
     setAntiparasitics(updatedAntiparasitics);
     
+    console.log('✅ Antiparasitaire ajouté avec succès:', newAntiparasitic);
+    console.log('📊 Total antiparasitaires après ajout:', updatedAntiparasitics.length);
+    console.log('💾 Synchronisation dans le dossier médical...');
+    
     // Mettre à jour les statistiques du client
     updateClientStats(antiparasiticData.clientId);
     
-    localStorage.setItem('vetpro-antiparasitics', JSON.stringify(updatedAntiparasitics));
+    // Sauvegarder toutes les données avec vérification
+    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, updatedAntiparasitics, antiparasiticProtocols);
+    
+    // Vérifier la sauvegarde
+    const savedData = localStorage.getItem('vetpro-antiparasitics');
+    console.log('✅ Données sauvegardées dans localStorage:', savedData ? JSON.parse(savedData).length : 0, 'antiparasitaires');
   };
 
   const updateAntiparasitic = (id: number, antiparasiticData: Partial<Antiparasitic>) => {
@@ -1846,13 +1963,13 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       antiparasitic.id === id ? { ...antiparasitic, ...antiparasiticData } : antiparasitic
     );
     setAntiparasitics(updatedAntiparasitics);
-    localStorage.setItem('vetpro-antiparasitics', JSON.stringify(updatedAntiparasitics));
+    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, updatedAntiparasitics, antiparasiticProtocols);
   };
 
   const deleteAntiparasitic = (id: number) => {
     const updatedAntiparasitics = antiparasitics.filter(antiparasitic => antiparasitic.id !== id);
     setAntiparasitics(updatedAntiparasitics);
-    localStorage.setItem('vetpro-antiparasitics', JSON.stringify(updatedAntiparasitics));
+    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, updatedAntiparasitics, antiparasiticProtocols);
   };
 
   // CRUD Protocoles Antiparasitaires
@@ -1884,7 +2001,12 @@ export function ClientProvider({ children }: { children: ReactNode }) {
 
   // Getters Antiparasites
   const getAntiparasiticById = (id: number) => antiparasitics.find(a => a.id === id);
-  const getAntiparasiticsByPetId = (petId: number) => antiparasitics.filter(a => a.petId === petId);
+  const getAntiparasiticsByPetId = (petId: number) => {
+    const result = antiparasitics.filter(a => a.petId === petId);
+    console.log('getAntiparasiticsByPetId - petId:', petId, 'result:', result);
+    console.log('getAntiparasiticsByPetId - all antiparasitics:', antiparasitics);
+    return result;
+  };
   const getAntiparasiticsByClientId = (clientId: number) => antiparasitics.filter(a => a.clientId === clientId);
   const getOverdueAntiparasitics = () => {
     const today = new Date().toISOString().split('T')[0];

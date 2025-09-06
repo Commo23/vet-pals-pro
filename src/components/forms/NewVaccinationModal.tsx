@@ -102,7 +102,11 @@ export default function NewVaccinationModal({
   });
 
   const [selectedProtocols, setSelectedProtocols] = useState<VaccinationProtocol[]>([]);
+  
+  // Protection contre undefined
+  const safeSelectedProtocols = selectedProtocols || [];
   const [nextDueDates, setNextDueDates] = useState<Record<string, string>>({});
+  const [selectedProtocol, setSelectedProtocol] = useState<any>(null);
 
   useEffect(() => {
     if (selectedClientId) {
@@ -115,9 +119,9 @@ export default function NewVaccinationModal({
 
   // Effet pour initialiser les dates de rappel par défaut
   useEffect(() => {
-    if (selectedProtocols.length > 0 && formData.dateGiven) {
+    if (safeSelectedProtocols.length > 0 && formData.dateGiven) {
       const defaults: Record<string, string> = {};
-      selectedProtocols.forEach(protocol => {
+      safeSelectedProtocols.forEach(protocol => {
         protocol.intervals.forEach(interval => {
           const key = `${protocol.id}-${interval.offsetDays}`;
           defaults[key] = format(
@@ -130,12 +134,12 @@ export default function NewVaccinationModal({
     } else {
       setNextDueDates({});
     }
-  }, [selectedProtocols, formData.dateGiven]);
+  }, [safeSelectedProtocols, formData.dateGiven]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.clientId || !formData.petId || (selectedProtocols.length === 0 && !formData.vaccineName)) {
+    if (!formData.clientId || !formData.petId || (safeSelectedProtocols.length === 0 && !formData.vaccineName)) {
       toast({
         title: "Erreur",
         description: "Veuillez remplir tous les champs obligatoires",
@@ -156,8 +160,8 @@ export default function NewVaccinationModal({
       return;
     }
 
-    if (selectedProtocols.length > 0) {
-      selectedProtocols.forEach(protocol => {
+    if (safeSelectedProtocols.length > 0) {
+      safeSelectedProtocols.forEach(protocol => {
         if (protocol.intervals && Array.isArray(protocol.intervals)) {
           protocol.intervals.forEach(interval => {
             const key = `${protocol.id}-${interval.offsetDays}`;
@@ -184,7 +188,7 @@ export default function NewVaccinationModal({
           });
         }
       });
-      toast({title: 'Vaccinations enregistrées', description: `${selectedProtocols.length} vaccinations ajoutées.`});
+      toast({title: 'Vaccinations enregistrées', description: `${safeSelectedProtocols.length} vaccinations ajoutées.`});
       setSelectedProtocols([]);
       setOpen(false);
       return;
@@ -287,11 +291,17 @@ export default function NewVaccinationModal({
                       <SelectValue placeholder="Sélectionner un client" />
                     </SelectTrigger>
                     <SelectContent>
-                      {clients.map(client => (
-                        <SelectItem key={client.id} value={client.id.toString()}>
-                          {client.name}
+                      {clients && Array.isArray(clients) && clients.length > 0 ? (
+                        clients.map(client => (
+                          <SelectItem key={client.id} value={client.id.toString()}>
+                            {client.name}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="no-clients" disabled>
+                          Aucun client trouvé
                         </SelectItem>
-                      ))}
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -328,7 +338,7 @@ export default function NewVaccinationModal({
               <Label>Protocoles suggérés pour {selectedPet?.type} (sélection multiple)</Label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {availableProtocols.map(protocol => {
-                  const checked = selectedProtocols.some(p => p.id === protocol.id);
+                  const checked = safeSelectedProtocols.some(p => p.id === protocol.id);
                   return (
                     <div key={protocol.id} className="flex items-center p-2 border rounded hover:bg-muted/50">
                       <Checkbox
@@ -351,14 +361,14 @@ export default function NewVaccinationModal({
           )}
 
               {/* Affichage des vaccins sélectionnés si multi-selection */}
-              {selectedProtocols.length > 0 ? (
+              {safeSelectedProtocols.length > 0 ? (
                 <Card className="mb-4">
                   <CardHeader>
                     <CardTitle className="text-sm">Vaccins sélectionnés</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <ul className="list-disc list-inside text-sm">
-                      {selectedProtocols.map(protocol => (
+                      {safeSelectedProtocols.map(protocol => (
                         <li key={protocol.id}>{protocol.name}</li>
                       ))}
                     </ul>
@@ -422,9 +432,9 @@ export default function NewVaccinationModal({
               </div>
 
           {/* Dates de rappel spécifiques par intervalle */}
-          {selectedProtocols.length > 0 && (
+          {safeSelectedProtocols.length > 0 && (
             <div className="space-y-4 mb-4">
-              {selectedProtocols.map(protocol => (
+              {safeSelectedProtocols.map(protocol => (
                 <div key={protocol.id} className="space-y-2">
                   <div className="font-medium text-sm">Étapes pour {protocol.name}</div>
                   {protocol.intervals.map(interval => {
