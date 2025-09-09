@@ -10,6 +10,23 @@ export interface FarmManagementSettings {
   defaultCoordinateFormat: string;
 }
 
+export interface DisplayPreferences {
+  clients: 'table' | 'cards';
+  pets: 'table' | 'cards';
+  consultations: 'table' | 'cards';
+  appointments: 'table' | 'cards';
+  prescriptions: 'table' | 'cards';
+  farms: 'table' | 'cards';
+  vaccinations: 'table' | 'cards';
+  antiparasitics: 'table' | 'cards';
+}
+
+export interface Veterinarian {
+  id: number;
+  name: string;
+  isActive: boolean;
+}
+
 export interface ClinicSettings {
   clinicName: string;
   address: string;
@@ -22,7 +39,9 @@ export interface ClinicSettings {
   species: string;
   showClinicInfo: boolean;
   showVetsInfo: boolean;
+  veterinarians: Veterinarian[];
   farmManagement: FarmManagementSettings;
+  displayPreferences: DisplayPreferences;
 }
 
 const SETTINGS_KEY = 'vetpro-clinicSettings';
@@ -68,6 +87,23 @@ const defaultFarmManagementSettings: FarmManagementSettings = {
   defaultCoordinateFormat: 'decimal'
 };
 
+const defaultDisplayPreferences: DisplayPreferences = {
+  clients: 'table',
+  pets: 'cards',
+  consultations: 'table',
+  appointments: 'table',
+  prescriptions: 'table',
+  farms: 'cards',
+  vaccinations: 'table',
+  antiparasitics: 'table'
+};
+
+const defaultVeterinarians: Veterinarian[] = [
+  { id: 1, name: 'Dr. Jean Dupont', isActive: true },
+  { id: 2, name: 'Dr. Marie Martin', isActive: true },
+  { id: 3, name: 'Pr. Ahmed El Alaoui', isActive: true }
+];
+
 const defaultSettings: ClinicSettings = {
   clinicName: '',
   address: '',
@@ -80,7 +116,9 @@ const defaultSettings: ClinicSettings = {
   species: '',
   showClinicInfo: true,
   showVetsInfo: true,
-  farmManagement: defaultFarmManagementSettings
+  veterinarians: defaultVeterinarians,
+  farmManagement: defaultFarmManagementSettings,
+  displayPreferences: defaultDisplayPreferences
 };
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -97,11 +135,21 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
         const mergedSettings = {
           ...defaultSettings,
           ...parsedSettings,
+          // Migration des vétérinaires : utiliser les nouveaux par défaut si les anciens sont détectés
+          veterinarians: parsedSettings.veterinarians && 
+            parsedSettings.veterinarians.some((vet: any) => vet.name === 'Dr. Martin' || vet.name === 'Dr. Dupont')
+            ? defaultVeterinarians // Utiliser les nouveaux vétérinaires par défaut
+            : parsedSettings.veterinarians || defaultVeterinarians,
           farmManagement: {
             ...defaultFarmManagementSettings,
             ...parsedSettings.farmManagement
+          },
+          displayPreferences: {
+            ...defaultDisplayPreferences,
+            ...parsedSettings.displayPreferences
           }
         };
+        console.log('Settings chargés:', mergedSettings.veterinarians);
         setSettings(mergedSettings);
         // Sauvegarder la version mise à jour pour éviter les problèmes futurs
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(mergedSettings));

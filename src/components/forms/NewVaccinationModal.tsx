@@ -65,23 +65,30 @@ interface NewVaccinationModalProps {
   children?: React.ReactNode;
   selectedPetId?: number;
   selectedClientId?: number;
+  isReminder?: boolean; // Indique si c'est un rappel
+  originalVaccinationId?: number; // ID du vaccin original (pour les rappels)
+  open?: boolean; // Pour contrôler l'ouverture de la modale
+  onOpenChange?: (open: boolean) => void; // Callback pour fermer la modale
+  editingVaccination?: any; // Vaccination à éditer
 }
 
 export default function NewVaccinationModal({ 
   children, 
   selectedPetId, 
-  selectedClientId 
+  selectedClientId,
+  isReminder = false,
+  originalVaccinationId,
+  open,
+  onOpenChange,
+  editingVaccination
 }: NewVaccinationModalProps) {
-  const { clients, pets, addVaccination, getVaccinationProtocolsBySpecies } = useClients();
+  const { clients, pets, addVaccination, updateVaccination, getVaccinationProtocolsBySpecies, calculateDueDateFromProtocol } = useClients();
   const { settings } = useSettings();
   
-  // Fallback veterinarians list if not available in settings
-  const defaultVeterinarians = [
-    { id: 1, name: 'Dr. Martin', isActive: true },
-    { id: 2, name: 'Dr. Dupont', isActive: true }
-  ];
   const { toast } = useToast();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const modalOpen = open !== undefined ? open : internalOpen;
+  const setModalOpen = onOpenChange || setInternalOpen;
   const [showProtocols, setShowProtocols] = useState(false);
   
   const [formData, setFormData] = useState({
@@ -90,7 +97,6 @@ export default function NewVaccinationModal({
     vaccineName: '',
     vaccineType: '',
     dateGiven: format(new Date(), 'yyyy-MM-dd'),
-    nextDueDate: '',
     batchNumber: '',
     veterinarian: '',
     notes: '',
@@ -107,6 +113,7 @@ export default function NewVaccinationModal({
   const safeSelectedProtocols = selectedProtocols || [];
   const [nextDueDates, setNextDueDates] = useState<Record<string, string>>({});
   const [selectedProtocol, setSelectedProtocol] = useState<any>(null);
+  const [calculatedDueDate, setCalculatedDueDate] = useState<string>(''); // Date suggérée par le protocole
 
   useEffect(() => {
     if (selectedClientId) {
@@ -116,6 +123,44 @@ export default function NewVaccinationModal({
       setFormData(prev => ({ ...prev, petId: selectedPetId.toString() }));
     }
   }, [selectedClientId, selectedPetId]);
+
+  // Pré-remplir le formulaire pour l'édition
+  useEffect(() => {
+    if (editingVaccination) {
+      setFormData({
+        clientId: editingVaccination.clientId.toString(),
+        petId: editingVaccination.petId.toString(),
+        vaccineName: editingVaccination.vaccineName,
+        vaccineType: editingVaccination.vaccineType,
+        dateGiven: editingVaccination.dateGiven,
+        nextDueDate: editingVaccination.nextDueDate,
+        batchNumber: editingVaccination.batchNumber || '',
+        veterinarian: editingVaccination.veterinarian || '',
+        notes: editingVaccination.notes || '',
+        cost: editingVaccination.cost || '',
+        location: editingVaccination.location || '',
+        manufacturer: editingVaccination.manufacturer || '',
+        injectionSite: editingVaccination.injectionSite || ''
+      });
+    }
+  }, [editingVaccination]);
+
+  // Calculer automatiquement la date de rappel selon le protocole
+  useEffect(() => {
+    if (formData.vaccineName && formData.dateGiven && formData.petId) {
+      const selectedPet = pets.find(p => p.id === parseInt(formData.petId));
+      if (selectedPet) {
+        const calculatedDate = calculateDueDateFromProtocol(
+          formData.vaccineName, 
+          selectedPet.type, 
+          formData.dateGiven
+        );
+        if (calculatedDate) {
+          setCalculatedDueDate(calculatedDate);
+        }
+      }
+    }
+  }, [formData.vaccineName, formData.dateGiven, formData.petId, pets, calculateDueDateFromProtocol]);
 
   // Effet pour initialiser les dates de rappel par défaut
   useEffect(() => {
@@ -139,13 +184,27 @@ export default function NewVaccinationModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.clientId || !formData.petId || (safeSelectedProtocols.length === 0 && !formData.vaccineName)) {
-      toast({
-        title: "Erreur",
-        description: "Veuillez remplir tous les champs obligatoires",
-        variant: "destructive"
-      });
-      return;
+    // Validation différente selon le mode
+    if (editingVaccination) {
+      // En mode édition, seuls client et animal sont obligatoires (déjà pré-remplis)
+      if (!formData.clientId || !formData.petId) {
+        toast({
+          title: "Erreur",
+          description: "Client ou animal manquant",
+          variant: "destructive"
+        });
+        return;
+      }
+    } else {
+      // En mode création, validation complète
+      if (!formData.clientId || !formData.petId || (safeSelectedProtocols.length === 0 && !formData.vaccineName)) {
+        toast({
+          title: "Erreur",
+          description: "Veuillez remplir tous les champs obligatoires",
+          variant: "destructive"
+        });
+        return;
+      }
     }
 
     const client = clients.find(c => c.id === parseInt(formData.clientId as string));
@@ -160,64 +219,143 @@ export default function NewVaccinationModal({
       return;
     }
 
-    if (safeSelectedProtocols.length > 0) {
+    // Ne traiter les protocoles que si on n'est pas en mode édition
+    if (safeSelectedProtocols.length > 0 && !editingVaccination) {
       safeSelectedProtocols.forEach(protocol => {
         if (protocol.intervals && Array.isArray(protocol.intervals)) {
-          protocol.intervals.forEach(interval => {
-            const key = `${protocol.id}-${interval.offsetDays}`;
+          let originalVaccinationId: number | undefined = undefined;
+          
+          // Créer d'abord la vaccination originale (offsetDays === 0)
+          const originalInterval = protocol.intervals.find(interval => interval.offsetDays === 0);
+          if (originalInterval) {
+            const key = `${protocol.id}-${originalInterval.offsetDays}`;
             const dueDate = nextDueDates[key] || '';
-            addVaccination({
+            originalVaccinationId = addVaccination({
               clientId: parseInt(formData.clientId as string),
               clientName: clients.find(c => c.id === parseInt(formData.clientId as string))?.name || '',
               petId: parseInt(formData.petId as string),
               petName: pets.find(p => p.id === parseInt(formData.petId as string))?.name || '',
-              vaccineName: `${protocol.name} (${interval.label})`,
+              vaccineName: `${protocol.name} (${originalInterval.label})`,
               vaccineType: protocol.vaccineType,
-              dateGiven: formData.dateGiven,
+              dateGiven: formData.dateGiven, // Date de la vaccination originale
               nextDueDate: dueDate,
               batchNumber: formData.batchNumber,
               veterinarian: formData.veterinarian,
               notes: formData.notes,
-              status: interval.offsetDays === 0 || !dueDate ? 'completed' : 'scheduled',
+              status: 'completed',
               cost: formData.cost,
               location: formData.location as any,
               manufacturer: protocol.manufacturer || formData.manufacturer,
               expirationDate: formData.expirationDate,
-              adverseReactions: formData.adverseReactions
+              adverseReactions: formData.adverseReactions,
+              vaccinationCategory: 'new',
+              isReminder: false
             });
+          }
+          
+          // Créer ensuite les rappels (offsetDays > 0)
+          protocol.intervals.forEach(interval => {
+            if (interval.offsetDays > 0) {
+              const key = `${protocol.id}-${interval.offsetDays}`;
+              const dueDate = nextDueDates[key] || '';
+              addVaccination({
+                clientId: parseInt(formData.clientId as string),
+                clientName: clients.find(c => c.id === parseInt(formData.clientId as string))?.name || '',
+                petId: parseInt(formData.petId as string),
+                petName: pets.find(p => p.id === parseInt(formData.petId as string))?.name || '',
+                vaccineName: `${protocol.name} (${interval.label})`,
+                vaccineType: protocol.vaccineType,
+                dateGiven: dueDate, // Date spécifique du rappel
+                nextDueDate: dueDate,
+                batchNumber: formData.batchNumber,
+                veterinarian: formData.veterinarian,
+                notes: formData.notes,
+                status: 'scheduled',
+                cost: formData.cost,
+                location: formData.location as any,
+                manufacturer: protocol.manufacturer || formData.manufacturer,
+                expirationDate: formData.expirationDate,
+                adverseReactions: formData.adverseReactions,
+                vaccinationCategory: 'reminder',
+                originalVaccinationId: originalVaccinationId,
+                isReminder: true
+              });
+            }
           });
         }
       });
       toast({title: 'Vaccinations enregistrées', description: `${safeSelectedProtocols.length} vaccinations ajoutées.`});
       setSelectedProtocols([]);
-      setOpen(false);
+      setModalOpen(false);
       return;
     }
 
-    addVaccination({
-      clientId: parseInt(formData.clientId as string),
-      clientName: client.name,
-      petId: parseInt(formData.petId as string),
-      petName: pet.name,
-      vaccineName: formData.vaccineName,
-      vaccineType: formData.vaccineType as 'core' | 'non-core' | 'rabies' | 'custom',
-      dateGiven: formData.dateGiven,
-      nextDueDate: formData.nextDueDate,
-      batchNumber: formData.batchNumber,
-      veterinarian: formData.veterinarian,
-      notes: formData.notes,
-      status: 'completed',
-      cost: formData.cost,
-      location: formData.location as any,
-      manufacturer: formData.manufacturer,
-      expirationDate: formData.expirationDate,
-      adverseReactions: formData.adverseReactions
-    });
+    // Trouver la dernière date de rappel (généralement le rappel annuel)
+    const lastReminderDate = Object.values(nextDueDates).sort().pop() || calculatedDueDate || formData.dateGiven;
 
-    toast({
-      title: "Vaccination enregistrée",
-      description: `Vaccination ${formData.vaccineName} ajoutée pour ${pet.name}`,
-    });
+    if (editingVaccination) {
+      // Mode édition - traiter uniquement cette ligne spécifique
+      const vaccinationType = editingVaccination.vaccinationCategory === 'reminder' ? 'rappel' : 'vaccination';
+      
+      updateVaccination(editingVaccination.id, {
+        clientId: parseInt(formData.clientId as string),
+        clientName: client.name,
+        petId: parseInt(formData.petId as string),
+        petName: pet.name,
+        vaccineName: formData.vaccineName,
+        vaccineType: formData.vaccineType as 'core' | 'non-core' | 'rabies' | 'custom',
+        vaccinationCategory: editingVaccination.vaccinationCategory, // Conserver la catégorie originale
+        dateGiven: formData.dateGiven,
+        nextDueDate: editingVaccination.vaccinationCategory === 'reminder' ? formData.dateGiven : lastReminderDate,
+        calculatedDueDate: calculatedDueDate,
+        batchNumber: formData.batchNumber,
+        veterinarian: formData.veterinarian,
+        notes: formData.notes,
+        status: editingVaccination.status, // Conserver le statut original
+        cost: formData.cost,
+        location: formData.location as any,
+        manufacturer: formData.manufacturer,
+        expirationDate: formData.expirationDate,
+        adverseReactions: formData.adverseReactions,
+        originalVaccinationId: editingVaccination.originalVaccinationId,
+        isReminder: editingVaccination.isReminder
+      });
+
+      toast({
+        title: `${vaccinationType.charAt(0).toUpperCase() + vaccinationType.slice(1)} modifiée`,
+        description: `${vaccinationType.charAt(0).toUpperCase() + vaccinationType.slice(1)} ${formData.vaccineName} modifiée pour ${pet.name}`,
+      });
+    } else {
+      // Mode création
+      addVaccination({
+        clientId: parseInt(formData.clientId as string),
+        clientName: client.name,
+        petId: parseInt(formData.petId as string),
+        petName: pet.name,
+        vaccineName: formData.vaccineName,
+        vaccineType: formData.vaccineType as 'core' | 'non-core' | 'rabies' | 'custom',
+        vaccinationCategory: isReminder ? 'reminder' : 'new', // Distinction nouveau/rappel
+        dateGiven: formData.dateGiven,
+        nextDueDate: lastReminderDate, // Dernière date de rappel (généralement annuelle)
+        calculatedDueDate: calculatedDueDate, // Date suggérée par le protocole
+        batchNumber: formData.batchNumber,
+        veterinarian: formData.veterinarian,
+        notes: formData.notes,
+        status: 'completed',
+        cost: formData.cost,
+        location: formData.location as any,
+        manufacturer: formData.manufacturer,
+        expirationDate: formData.expirationDate,
+        adverseReactions: formData.adverseReactions,
+        originalVaccinationId: isReminder ? originalVaccinationId : undefined,
+        isReminder: isReminder
+      });
+
+      toast({
+        title: "Vaccination enregistrée",
+        description: `Vaccination ${formData.vaccineName} ajoutée pour ${pet.name}`,
+      });
+    }
 
     // Reset form
     setFormData({
@@ -237,7 +375,7 @@ export default function NewVaccinationModal({
       adverseReactions: ''
     });
     setSelectedProtocols([]);
-    setOpen(false);
+    setModalOpen(false);
   };
 
   const handleProtocolSelect = (protocol: any, type: string) => {
@@ -255,7 +393,7 @@ export default function NewVaccinationModal({
   const availableProtocols = selectedPet ? getVaccinationProtocolsBySpecies(selectedPet.type) : [];
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={modalOpen} onOpenChange={setModalOpen}>
       <DialogTrigger asChild>
         {children || (
           <Button className="gap-2">
@@ -268,8 +406,17 @@ export default function NewVaccinationModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Syringe className="h-5 w-5" />
-            Nouvelle Vaccination
+            {editingVaccination ? 
+              (editingVaccination.vaccinationCategory === 'reminder' ? 'Modifier le Rappel' : 'Modifier la Vaccination') : 
+              'Nouvelle Vaccination'
+            }
           </DialogTitle>
+          {editingVaccination && editingVaccination.vaccinationCategory === 'reminder' && (
+            <div className="text-sm text-orange-600 bg-orange-50 p-2 rounded-md border border-orange-200">
+              <strong>Mode édition de rappel :</strong> Vous modifiez uniquement ce rappel spécifique. 
+              Les autres rappels de la même vaccination ne seront pas affectés.
+            </div>
+          )}
         </DialogHeader>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -278,6 +425,12 @@ export default function NewVaccinationModal({
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Sélection Client/Animal */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {editingVaccination && (
+                  <div className="col-span-2 text-sm text-blue-600 bg-blue-50 p-2 rounded-md border border-blue-200">
+                    <strong>Mode édition :</strong> Vous modifiez uniquement cette vaccination spécifique. 
+                    Le client et l'animal sont verrouillés. Les protocoles ne sont pas affichés car ils ne s'appliquent qu'à la création.
+                  </div>
+                )}
                 <div>
                   <Label htmlFor="clientId">Client *</Label>
                   <Select 
@@ -286,6 +439,7 @@ export default function NewVaccinationModal({
                       setFormData(prev => ({ ...prev, clientId: value, petId: '' }));
                       setSelectedProtocol(null);
                     }}
+                    disabled={editingVaccination ? true : false}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Sélectionner un client" />
@@ -314,7 +468,7 @@ export default function NewVaccinationModal({
                       setFormData(prev => ({ ...prev, petId: value }));
                       setSelectedProtocol(null);
                     }}
-                    disabled={!formData.clientId}
+                    disabled={editingVaccination ? true : !formData.clientId}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Sélectionner un animal" />
@@ -333,7 +487,7 @@ export default function NewVaccinationModal({
               </div>
 
                         {/* Protocoles suggérés */}
-          {availableProtocols.length > 0 && (
+          {availableProtocols.length > 0 && !editingVaccination && (
             <div className="space-y-2 mb-4">
               <Label>Protocoles suggérés pour {selectedPet?.type} (sélection multiple)</Label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -361,7 +515,7 @@ export default function NewVaccinationModal({
           )}
 
               {/* Affichage des vaccins sélectionnés si multi-selection */}
-              {safeSelectedProtocols.length > 0 ? (
+              {safeSelectedProtocols.length > 0 && !editingVaccination ? (
                 <Card className="mb-4">
                   <CardHeader>
                     <CardTitle className="text-sm">Vaccins sélectionnés</CardTitle>
@@ -378,13 +532,13 @@ export default function NewVaccinationModal({
                 // Nom et type du vaccin pour sélection unique
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="vaccineName">Nom du vaccin *</Label>
+                    <Label htmlFor="vaccineName">Nom du vaccin {!editingVaccination && '*'}</Label>
                     <Input
                       id="vaccineName"
                       value={formData.vaccineName}
                       onChange={(e) => setFormData(prev => ({ ...prev, vaccineName: e.target.value }))}
                       placeholder="Ex: DHPP, Rage, FVRCP..."
-                      required
+                      required={!editingVaccination}
                     />
                   </div>
                   <div>
@@ -408,50 +562,48 @@ export default function NewVaccinationModal({
               )
               }
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4">
                 <div>
-                  <Label htmlFor="dateGiven">Date d'administration *</Label>
+                  <Label htmlFor="dateGiven">Date d'administration {!editingVaccination && '*'}</Label>
                   <Input
                     id="dateGiven"
                     type="date"
                     value={formData.dateGiven}
                     onChange={(e) => setFormData(prev => ({ ...prev, dateGiven: e.target.value }))}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="nextDueDate">Date de rappel</Label>
-                  <Input
-                    id="nextDueDate"
-                    type="date"
-                    value={formData.nextDueDate}
-                    onChange={(e) => setFormData(prev => ({ ...prev, nextDueDate: e.target.value }))}
+                    required={!editingVaccination}
                   />
                 </div>
               </div>
 
           {/* Dates de rappel spécifiques par intervalle */}
-          {safeSelectedProtocols.length > 0 && (
+          {safeSelectedProtocols.length > 0 && !editingVaccination && (
             <div className="space-y-4 mb-4">
               {safeSelectedProtocols.map(protocol => (
                 <div key={protocol.id} className="space-y-2">
                   <div className="font-medium text-sm">Étapes pour {protocol.name}</div>
                   {protocol.intervals.map(interval => {
                     const key = `${protocol.id}-${interval.offsetDays}`;
+                    // Calculer la date suggérée basée sur la date d'administration + offset
+                    const suggestedDate = new Date(formData.dateGiven);
+                    suggestedDate.setDate(suggestedDate.getDate() + interval.offsetDays);
+                    const suggestedDateString = suggestedDate.toISOString().split('T')[0];
+                    
                     return (
                       <div key={key} className="grid grid-cols-1 md:grid-cols-2 gap-2 items-center">
                         <div className="text-sm">
                           {interval.label} (+{interval.offsetDays} jours)
                         </div>
                         <div>
-                          <Label htmlFor={key}>Date exacte</Label>
+                          <Label htmlFor={key}>Date de rappel</Label>
                           <Input
                             id={key}
                             type="date"
-                            value={nextDueDates[key] || ''}
+                            value={nextDueDates[key] || suggestedDateString}
                             onChange={e => setNextDueDates(prev => ({ ...prev, [key]: e.target.value }))}
                           />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Suggérée: {suggestedDate.toLocaleDateString('fr-FR')}
+                          </p>
                         </div>
                       </div>
                     );
@@ -472,13 +624,16 @@ export default function NewVaccinationModal({
                       <SelectValue placeholder="Sélectionner un vétérinaire" />
                     </SelectTrigger>
                     <SelectContent>
-                      {(settings.veterinarians || defaultVeterinarians)
-                        .filter(vet => vet.isActive)
-                        .map(vet => (
-                          <SelectItem key={vet.id} value={vet.name}>
-                            {vet.name}
-                          </SelectItem>
-                        ))}
+                      {(() => {
+                        console.log('Vétérinaires disponibles dans le formulaire:', settings.veterinarians);
+                        return settings.veterinarians
+                          .filter(vet => vet.isActive)
+                          .map(vet => (
+                            <SelectItem key={vet.id} value={vet.name}>
+                              {vet.name}
+                            </SelectItem>
+                          ));
+                      })()}
                     </SelectContent>
                   </Select>
                 </div>

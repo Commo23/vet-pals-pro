@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Search, Tractor, Users2, AlertTriangle, Calendar, MapPin, Phone, Eye, Edit, Trash2, Stethoscope, Grid, List } from "lucide-react";
 import { useClients } from "@/contexts/ClientContext";
 import { Farm, FarmIntervention } from "@/contexts/ClientContext";
+import { useDisplayPreference } from "@/hooks/use-display-preference";
 import { formatDate } from "@/lib/utils";
 import NewFarmModal from "@/components/forms/NewFarmModal";
 import NewFarmInterventionModal from "@/components/forms/NewFarmInterventionModal";
@@ -28,9 +29,10 @@ const Farm = () => {
   
   const { toast } = useToast();
   
+  const { currentView } = useDisplayPreference('farms');
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("all");
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>(currentView);
   const [showNewFarmModal, setShowNewFarmModal] = useState(false);
   const [showNewInterventionModal, setShowNewInterventionModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);

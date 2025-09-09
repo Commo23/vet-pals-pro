@@ -1,12 +1,15 @@
 import { Consultation } from "@/contexts/ClientContext";
 import { Button } from "@/components/ui/button";
 import { Printer } from "lucide-react";
+import { useSettings } from "@/contexts/SettingsContext";
 
 interface ConsultationPrintProps {
   consultation: Consultation;
 }
 
 export function ConsultationPrint({ consultation }: ConsultationPrintProps) {
+  const { settings } = useSettings();
+  
   const handlePrint = () => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
@@ -151,7 +154,7 @@ export function ConsultationPrint({ consultation }: ConsultationPrintProps) {
             </div>
             <div class="info-section">
               <h3>Coût</h3>
-              <p>${consultation.cost ? consultation.cost + ' €' : 'Non renseigné'}</p>
+              <p>${consultation.cost ? consultation.cost + ' ' + settings.currency : 'Non renseigné'}</p>
             </div>
           </div>
 

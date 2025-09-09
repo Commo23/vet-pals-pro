@@ -28,6 +28,7 @@ const NewFarmModal = ({ open, onOpenChange }: NewFarmModalProps) => {
   const [formData, setFormData] = useState<Partial<Farm> & { coordinates: { latitude: number; longitude: number }; emergencyContact: { name: string; phone: string; relation: string } }>({
     name: "",
     owner: "",
+    ownerIdNumber: "",
     address: "",
     coordinates: { latitude: 0, longitude: 0 },
     phone: "",
@@ -82,6 +83,7 @@ const NewFarmModal = ({ open, onOpenChange }: NewFarmModalProps) => {
       setFormData({
         name: "",
         owner: "",
+        ownerIdNumber: "",
         address: "",
         coordinates: { latitude: 0, longitude: 0 },
         phone: "",
@@ -207,6 +209,7 @@ const NewFarmModal = ({ open, onOpenChange }: NewFarmModalProps) => {
     const newFarm: Omit<Farm, 'id' | 'createdAt'> = {
       name: formData.name!,
       owner: formData.owner!,
+      ownerIdNumber: formData.ownerIdNumber || "",
       address: formData.address!,
       coordinates: formData.coordinates || { latitude: 0, longitude: 0 },
       phone: formData.phone || "",
@@ -270,6 +273,15 @@ const NewFarmModal = ({ open, onOpenChange }: NewFarmModalProps) => {
                   value={formData.owner || ""}
                   onChange={(e) => handleChange("owner", e.target.value)}
                   placeholder="Nom du propriétaire"
+                />
+              </div>
+              <div>
+                <Label htmlFor="ownerIdNumber">N° pièce d'identité du propriétaire</Label>
+                <Input
+                  id="ownerIdNumber"
+                  value={formData.ownerIdNumber || ""}
+                  onChange={(e) => handleChange("ownerIdNumber", e.target.value)}
+                  placeholder="Numéro de carte d'identité, passeport, etc."
                 />
               </div>
               <div className="md:col-span-2">

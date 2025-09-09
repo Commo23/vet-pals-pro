@@ -9,11 +9,13 @@ import { NewClientModal } from "@/components/forms/NewClientModal";
 import { ClientViewModal } from "@/components/modals/ClientViewModal";
 import { ClientEditModal } from "@/components/modals/ClientEditModal";
 import { ClientProvider, useClients, Client } from "@/contexts/ClientContext";
+import { useDisplayPreference } from "@/hooks/use-display-preference";
 
 const ClientsContent = () => {
   const { clients } = useClients();
+  const { currentView } = useDisplayPreference('clients');
   const [searchTerm, setSearchTerm] = useState("");
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>(currentView);
   const [showClientModal, setShowClientModal] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);

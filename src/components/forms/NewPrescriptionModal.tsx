@@ -448,3 +448,5 @@ export function NewPrescriptionModal({ open, onOpenChange, petId, consultationId
     </Dialog>
   );
 }
+
+export default NewPrescriptionModal;

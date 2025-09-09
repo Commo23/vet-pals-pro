@@ -4,22 +4,25 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Calendar, FileText, Stethoscope, Syringe, AlertCircle, TrendingUp, TrendingDown, Activity, Weight, Thermometer, Plus, Printer, Bug, Award, Edit, CheckCircle } from "lucide-react";
+import { Calendar, FileText, Stethoscope, Syringe, AlertCircle, TrendingUp, TrendingDown, Activity, Weight, Thermometer, Plus, Printer, Bug, Award, Edit, CheckCircle, CheckSquare } from "lucide-react";
 import { Pet, Consultation, useClients, Antiparasitic } from "@/contexts/ClientContext";
 import NewVaccinationModal from '@/components/forms/NewVaccinationModal';
 import NewAntiparasiticModal from '@/components/forms/NewAntiparasiticModal';
 import { NewConsultationModal } from "@/components/forms/NewConsultationModal";
 import { NewAppointmentModal } from "@/components/forms/NewAppointmentModal";
+import { ConfirmVaccinationReminderModal } from "@/components/modals/ConfirmVaccinationReminderModal";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { calculateAge, formatDate } from "@/lib/utils";
 import { PrescriptionsList } from "@/components/PrescriptionsList";
 import { useReactToPrint } from 'react-to-print';
 import { useRef } from 'react';
+import { useToast } from '@/hooks/use-toast';
 import CertificateVaccinationPrint from '@/components/CertificateVaccinationPrint';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface PetDossierModalProps {
   open: boolean;
@@ -45,7 +48,9 @@ export function PetDossierModal({ open, onOpenChange, pet }: PetDossierModalProp
     getVaccinationsByPetId,
     getAntiparasiticsByPetId,
     updatePet,
-    updateConsultation
+    updateConsultation,
+    updateVaccination,
+    updateVaccinationStatuses
   } = useClients();
   const [showNewConsultation, setShowNewConsultation] = useState(false);
   const [showNewAppointment, setShowNewAppointment] = useState(false);
@@ -76,11 +81,23 @@ export function PetDossierModal({ open, onOpenChange, pet }: PetDossierModalProp
     type: '' as 'consultation' | 'vaccination' | 'chirurgie' | 'urgence' | 'controle' | 'sterilisation' | 'dentaire',
     reason: ''
   });
+  const [selectedVaccinationForReminder, setSelectedVaccinationForReminder] = useState<any>(null);
+  const [showConfirmReminder, setShowConfirmReminder] = useState(false);
+  const [selectedVaccinationForConfirmation, setSelectedVaccinationForConfirmation] = useState<any>(null);
+  const [editingVaccinationStatus, setEditingVaccinationStatus] = useState<number | null>(null);
+  const { toast } = useToast();
   const printRef = useRef<any>(null);
   const handlePrint = useReactToPrint({
     contentRef: printRef,
     onAfterPrint: () => onOpenChange(false)
   });
+
+  // Mettre à jour les statuts des vaccinations quand le modal s'ouvre
+  useEffect(() => {
+    if (open) {
+      updateVaccinationStatuses();
+    }
+  }, [open, updateVaccinationStatuses]);
 
   const handlePedigreeSave = () => {
     if (pet) {
@@ -116,6 +133,46 @@ export function PetDossierModal({ open, onOpenChange, pet }: PetDossierModalProp
       });
       setEditingPedigree(false);
     }
+  };
+
+  const handleVaccinationReminder = (vaccination: any) => {
+    if (!pet) return;
+    
+    // Pré-remplir les données pour le rendez-vous de rappel
+    setAlertPrefill({
+      clientId: pet.ownerId,
+      petId: pet.id,
+      type: 'vaccination',
+      reason: `Rappel vaccinal - ${vaccination.vaccineName}`
+    });
+    
+    // Stocker la vaccination sélectionnée pour référence
+    setSelectedVaccinationForReminder(vaccination);
+    
+    // Ouvrir le modal de rendez-vous
+    setShowNewAppointment(true);
+  };
+
+  const handleConfirmReminder = (vaccination: any) => {
+    setSelectedVaccinationForConfirmation(vaccination);
+    setShowConfirmReminder(true);
+  };
+
+  const handleStatusChange = (vaccinationId: number, newStatus: 'completed' | 'scheduled' | 'overdue' | 'missed') => {
+    updateVaccination(vaccinationId, { status: newStatus });
+    setEditingVaccinationStatus(null);
+    
+    const statusLabels = {
+      completed: 'Terminée',
+      scheduled: 'Planifiée', 
+      overdue: 'En retard',
+      missed: 'Manquée'
+    };
+    
+    toast({
+      title: "Statut mis à jour",
+      description: `Le statut de la vaccination a été changé en "${statusLabels[newStatus]}"`,
+    });
   };
 
   const handleDeletePhoto = (consultationId: number, photoIndex: number) => {
@@ -1181,8 +1238,13 @@ export function PetDossierModal({ open, onOpenChange, pet }: PetDossierModalProp
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
                               <div className="flex items-center gap-3 mb-2">
-                                <Syringe className="h-5 w-5 text-blue-600" />
-                                <h4 className="font-semibold text-lg">{vaccination.vaccineName}</h4>
+                                <Syringe className={`h-5 w-5 ${vaccination.vaccinationCategory === 'reminder' ? 'text-orange-600' : 'text-blue-600'}`} />
+                                <h4 className="font-semibold text-lg">
+                                  {vaccination.vaccineName}
+                                  {vaccination.vaccinationCategory === 'reminder' && (
+                                    <span className="ml-2 text-sm text-orange-600 font-normal">(Rappel)</span>
+                                  )}
+                                </h4>
                                 <Badge 
                                   variant={vaccination.vaccineType === 'core' ? 'default' : 'secondary'}
                                   className="text-xs"
@@ -1191,29 +1253,73 @@ export function PetDossierModal({ open, onOpenChange, pet }: PetDossierModalProp
                                    vaccination.vaccineType === 'non-core' ? 'Optionnel' :
                                    vaccination.vaccineType === 'rabies' ? 'Rage' : 'Personnalisé'}
                                 </Badge>
+                                {vaccination.vaccinationCategory === 'reminder' && (
+                                  <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-800">
+                                    Rappel
+                                  </Badge>
+                                )}
+                                {editingVaccinationStatus === vaccination.id ? (
+                                  <div className="flex items-center gap-2">
+                                    <Select
+                                      value={vaccination.status}
+                                      onValueChange={(value: 'completed' | 'scheduled' | 'overdue' | 'missed') => 
+                                        handleStatusChange(vaccination.id, value)
+                                      }
+                                    >
+                                      <SelectTrigger className="w-32">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="completed">Terminée</SelectItem>
+                                        <SelectItem value="scheduled">Planifiée</SelectItem>
+                                        <SelectItem value="overdue">En retard</SelectItem>
+                                        <SelectItem value="missed">Manquée</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => setEditingVaccinationStatus(null)}
+                                    >
+                                      Annuler
+                                    </Button>
+                                  </div>
+                                ) : (
                                 <Badge 
                                   className={
-                                    vaccination.status === 'completed' ? 'bg-green-100 text-green-800 border-green-200' :
-                                    vaccination.status === 'overdue' ? 'bg-red-100 text-red-800 border-red-200' :
-                                    vaccination.status === 'scheduled' ? 'bg-blue-100 text-blue-800 border-blue-200' :
-                                    'bg-orange-100 text-orange-800 border-orange-200'
-                                  }
+                                      vaccination.status === 'completed' ? 'bg-green-100 text-green-800 border-green-200 cursor-pointer hover:bg-green-200' :
+                                      vaccination.status === 'overdue' ? 'bg-red-100 text-red-800 border-red-200 cursor-pointer hover:bg-red-200' :
+                                      vaccination.status === 'scheduled' ? 'bg-blue-100 text-blue-800 border-blue-200 cursor-pointer hover:bg-blue-200' :
+                                      'bg-orange-100 text-orange-800 border-orange-200 cursor-pointer hover:bg-orange-200'
+                                    }
+                                    onClick={() => setEditingVaccinationStatus(vaccination.id)}
                                 >
                                   {vaccination.status === 'completed' ? 'Terminée' :
                                    vaccination.status === 'overdue' ? 'En retard' :
                                    vaccination.status === 'scheduled' ? 'Planifiée' : 'Manquée'}
                                 </Badge>
+                                )}
                               </div>
                               
                               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
                                 <div>
-                                  <p className="text-gray-600">Date administrée</p>
+                                  <p className="text-gray-600">
+                                    {vaccination.vaccinationCategory === 'reminder' ? 'Date du rappel' : 'Date administrée'}
+                                  </p>
                                   <p className="font-medium">{formatDate(vaccination.dateGiven)}</p>
                                 </div>
+                                {vaccination.vaccinationCategory === 'new' && (
                                 <div>
                                   <p className="text-gray-600">Rappel prévu</p>
                                   <p className="font-medium">{formatDate(vaccination.nextDueDate)}</p>
                                 </div>
+                                )}
+                                {vaccination.vaccinationCategory === 'reminder' && vaccination.originalVaccinationId && (
+                                  <div>
+                                    <p className="text-gray-600">Vaccination originale</p>
+                                    <p className="font-medium text-sm text-gray-500">ID: {vaccination.originalVaccinationId}</p>
+                                  </div>
+                                )}
                                 <div>
                                   <p className="text-gray-600">Vétérinaire</p>
                                   <p className="font-medium">{vaccination.veterinarian}</p>
@@ -1272,14 +1378,59 @@ export function PetDossierModal({ open, onOpenChange, pet }: PetDossierModalProp
                                 <FileText className="h-4 w-4" />
                                 Certificat
                               </Button>
-                              {vaccination.nextDueDate && new Date(vaccination.nextDueDate) <= new Date() && vaccination.status !== 'completed' && (
-                                <Button size="sm" className="gap-2">
+                              {vaccination.nextDueDate && new Date(vaccination.nextDueDate) <= new Date() && vaccination.status !== 'completed' && !vaccination.reminderAppointmentId && (
+                                <Button 
+                                  size="sm" 
+                                  className="gap-2"
+                                  onClick={() => handleVaccinationReminder(vaccination)}
+                                >
                                   <Plus className="h-4 w-4" />
                                   Rappel
                                 </Button>
                               )}
+                              {vaccination.reminderAppointmentId && (
+                                <Badge variant="outline" className="text-xs">
+                                  Rappel programmé
+                                </Badge>
+                              )}
+                              {vaccination.status === 'overdue' && (
+                                <Button
+                                  size="sm"
+                                  className="gap-2"
+                                  onClick={() => handleConfirmReminder(vaccination)}
+                                >
+                                  <CheckSquare className="h-4 w-4" />
+                                  Confirmer
+                                </Button>
+                              )}
                             </div>
                           </div>
+                          
+                          {/* Historique des rappels */}
+                          {vaccination.reminderHistory && vaccination.reminderHistory.length > 0 && (
+                            <div className="mt-4 pt-4 border-t">
+                              <h5 className="text-sm font-medium text-muted-foreground mb-2">Historique des rappels</h5>
+                              <div className="space-y-2">
+                                {vaccination.reminderHistory.map((reminder) => (
+                                  <div key={reminder.id} className="flex items-center justify-between text-xs bg-muted/30 p-2 rounded">
+                                    <div className="flex items-center gap-2">
+                                      <Calendar className="h-3 w-3" />
+                                      <span>{new Date(reminder.scheduledDate).toLocaleDateString('fr-FR')}</span>
+                                    </div>
+                                    <Badge 
+                                      variant={reminder.status === 'completed' ? 'default' : 
+                                              reminder.status === 'missed' ? 'destructive' : 'secondary'}
+                                      className="text-xs"
+                                    >
+                                      {reminder.status === 'completed' ? 'Complété' :
+                                       reminder.status === 'missed' ? 'Manqué' :
+                                       reminder.status === 'cancelled' ? 'Annulé' : 'Programmé'}
+                                    </Badge>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </CardContent>
                       </Card>
                     ))}
@@ -1735,11 +1886,18 @@ export function PetDossierModal({ open, onOpenChange, pet }: PetDossierModalProp
       />
       <NewAppointmentModal 
         open={showNewAppointment} 
-        onOpenChange={setShowNewAppointment}
+        onOpenChange={(open) => {
+          setShowNewAppointment(open);
+          if (!open) {
+            setAlertPrefill({ clientId: 0, petId: 0, type: '' as any, reason: '' });
+            setSelectedVaccinationForReminder(null);
+          }
+        }}
         prefillClientId={alertPrefill.clientId}
         prefillPetId={alertPrefill.petId}
         prefillType={alertPrefill.type}
         prefillReason={alertPrefill.reason}
+        originalVaccinationId={selectedVaccinationForReminder?.id} // Pass vaccination ID for reminder
       />
       {showNewVaccination && (
         <NewVaccinationModal 
@@ -1749,6 +1907,17 @@ export function PetDossierModal({ open, onOpenChange, pet }: PetDossierModalProp
           <Button onClick={() => setShowNewVaccination(false)}>Fermer</Button>
         </NewVaccinationModal>
       )}
+      
+      <ConfirmVaccinationReminderModal
+        open={showConfirmReminder}
+        onOpenChange={(open) => {
+          setShowConfirmReminder(open);
+          if (!open) {
+            setSelectedVaccinationForConfirmation(null);
+          }
+        }}
+        vaccination={selectedVaccinationForConfirmation}
+      />
       {showNewAntiparasitic && (
         <NewAntiparasiticModal 
           selectedClientId={owner?.id}

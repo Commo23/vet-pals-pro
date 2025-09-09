@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useClients } from '@/contexts/ClientContext';
 import { useSettings } from '@/contexts/SettingsContext';
+import { useDisplayPreference } from '@/hooks/use-display-preference';
 import { 
   Bug,
   Calendar,
@@ -29,12 +30,14 @@ import {
   PawPrint,
   FileText,
   Eye,
-  Edit
+  Edit,
+  Trash2
 } from 'lucide-react';
 import { format, isWithinInterval, startOfDay, endOfDay, addDays, isSameDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import NewAntiparasiticModal from '@/components/forms/NewAntiparasiticModal';
 import AntiparasiticProtocolModal from '@/components/forms/AntiparasiticProtocolModal';
+import { PetDossierModal } from '@/components/modals/PetDossierModal';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useReactToPrint } from 'react-to-print';
@@ -169,26 +172,39 @@ const AntiparasiteCalendar: React.FC = () => {
   );
 };
 
+
 export default function Antiparasites() {
-  const { 
-    antiparasitics, 
-    pets, 
-    clients, 
-    antiparasiticProtocols,
-    getOverdueAntiparasitics,
-    getUpcomingAntiparasitics,
-    getAntiparasiticsByStatus,
-    getActiveAntiparasiticProtocols,
-    getAntiparasiticProtocolsBySpecies
-  } = useClients();
+  const { antiparasitics, pets, clients, antiparasiticProtocols, getOverdueAntiparasitics, getUpcomingAntiparasitics, getAntiparasiticsByStatus, getActiveAntiparasiticProtocols, getAntiparasiticProtocolsBySpecies, addAntiparasitic, updateAntiparasitic, deleteAntiparasitic } = useClients();
   const { settings } = useSettings();
+  const { currentView } = useDisplayPreference('antiparasitics');
   const { toast } = useToast();
+  // Inline editing state
+  const [editingField, setEditingField] = useState<{ id: number; field: 'dateGiven' | 'veterinarian' | 'cost'; } | null>(null);
+  const [fieldValue, setFieldValue] = useState<string>('');
+
+  // Modal states for edit/view
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingAntiparasitic, setEditingAntiparasitic] = useState<any>(null);
+  const [showPetDossierModal, setShowPetDossierModal] = useState(false);
+  const [selectedPetForDossier, setSelectedPetForDossier] = useState<number | null>(null);
+
+  const handleFieldSave = () => {
+    if (!editingField) return;
+    const { id, field } = editingField;
+    const entity = antiparasitics.find(a => a.id === id);
+    if (entity) {
+      const updated = { ...entity, [field]: field === 'cost' ? fieldValue : fieldValue };
+      updateAntiparasitic(id, updated as any);
+      toast({ title: 'Modifié', description: `${field} mis à jour`, });
+    }
+    setEditingField(null);
+  };
 
   // Modals now use DialogTrigger; no external state needed
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>(currentView);
   
   // Certificat modal
   const [certModalOpen, setCertModalOpen] = useState(false);
@@ -252,17 +268,12 @@ export default function Antiparasites() {
 
   // Handlers pour view/edit
   const handleViewAntiparasitic = (a: any) => {
-    toast({
-      title: `Détails de ${a.productName}`,
-      description: `Date: ${format(new Date(a.dateGiven), 'dd/MM/yyyy')}\nParasites: ${a.targetParasites}`,
-    });
+    setSelectedPetForDossier(a.petId);
+    setShowPetDossierModal(true);
   };
   const handleEditAntiparasitic = (a: any) => {
-    // TODO: ouvrir modal d'édition
-    toast({
-      title: `Éditer ${a.productName}`,
-      description: `Fonctionnalité d'édition à implémenter`,
-    });
+    setEditingAntiparasitic(a);
+    setShowEditModal(true);
   };
 
   return (
@@ -492,6 +503,19 @@ export default function Antiparasites() {
                         <Button size="sm" variant="outline" onClick={() => handleEditAntiparasitic(antiparasite)}>
                           <Edit className="h-4 w-4" />
                         </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => {
+                            if (confirm('Supprimer ce traitement antiparasitaire ?')) {
+                              deleteAntiparasitic(antiparasite.id);
+                              toast({ title: 'Supprimé', description: `${antiparasite.productName} supprimé.` });
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
@@ -511,6 +535,7 @@ export default function Antiparasites() {
                       <TableHead>Prochain rappel</TableHead>
                       <TableHead>Statut</TableHead>
                       <TableHead>Vétérinaire</TableHead>
+                      <TableHead>Coût</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -532,7 +557,22 @@ export default function Antiparasites() {
                         </TableCell>
                         <TableCell className="font-medium">{antiparasite.productName}</TableCell>
                         <TableCell>{antiparasite.productType}</TableCell>
-                        <TableCell>{format(new Date(antiparasite.dateGiven), 'dd/MM/yyyy')}</TableCell>
+                        <TableCell
+                          className="cursor-pointer"
+                          onClick={() => { setEditingField({ id: antiparasite.id, field: 'dateGiven' }); setFieldValue(antiparasite.dateGiven); }}
+                        >
+                          {editingField?.id === antiparasite.id && editingField.field === 'dateGiven' ? (
+                            <Input
+                              type="date"
+                              value={fieldValue}
+                              onChange={e => setFieldValue(e.target.value)}
+                              onBlur={handleFieldSave}
+                              autoFocus
+                            />
+                          ) : (
+                            format(new Date(antiparasite.dateGiven), 'dd/MM/yyyy')
+                          )}
+                        </TableCell>
                         <TableCell>
                           {antiparasite.nextDueDate ? format(new Date(antiparasite.nextDueDate), 'dd/MM/yyyy') : '-'}
                         </TableCell>
@@ -546,7 +586,50 @@ export default function Antiparasites() {
                             </span>
                           </Badge>
                         </TableCell>
-                        <TableCell>{antiparasite.veterinarian}</TableCell>
+                        <TableCell
+                          className="cursor-pointer"
+                          onClick={() => { setEditingField({ id: antiparasite.id, field: 'veterinarian' }); setFieldValue(antiparasite.veterinarian); }}
+                        >
+                          {editingField?.id === antiparasite.id && editingField.field === 'veterinarian' ? (
+                            <Select
+                              value={fieldValue}
+                              onValueChange={value => {
+                                setFieldValue(value);
+                                updateAntiparasitic(antiparasite.id, { veterinarian: value });
+                                setEditingField(null);
+                              }}
+                            >
+                              <SelectTrigger className="w-32">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {settings.veterinarians
+                                  .filter(v => v.isActive)
+                                  .map(vet => (
+                                    <SelectItem key={vet.id} value={vet.name}>{vet.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            antiparasite.veterinarian
+                          )}
+                        </TableCell>
+                        <TableCell
+                          className="cursor-pointer"
+                          onClick={() => { setEditingField({ id: antiparasite.id, field: 'cost' }); setFieldValue(antiparasite.cost || ''); }}
+                        >
+                          {editingField?.id === antiparasite.id && editingField.field === 'cost' ? (
+                            <Input
+                              type="number"
+                              value={fieldValue}
+                              onChange={e => setFieldValue(e.target.value)}
+                              onBlur={handleFieldSave}
+                              autoFocus
+                            />
+                          ) : (
+                            antiparasite.cost ? `${antiparasite.cost} ${settings.currency}` : '-'
+                          )}
+                        </TableCell>
                         <TableCell>
                           <div className="flex gap-1">
                             <Button size="sm" variant="outline" onClick={() => handleViewAntiparasitic(antiparasite)}>
@@ -554,6 +637,19 @@ export default function Antiparasites() {
                             </Button>
                             <Button size="sm" variant="outline" onClick={() => handleEditAntiparasitic(antiparasite)}>
                               <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => {
+                                if (confirm('Supprimer ce traitement antiparasitaire ?')) {
+                                  deleteAntiparasitic(antiparasite.id);
+                                  toast({ title: 'Supprimé', description: `${antiparasite.productName} supprimé.` });
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
                         </TableCell>
@@ -841,6 +937,24 @@ export default function Antiparasites() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Modals */}
+      <NewAntiparasiticModal
+        open={showEditModal}
+        onOpenChange={(open) => {
+          setShowEditModal(open);
+          if (!open) setEditingAntiparasitic(null);
+        }}
+        editingAntiparasitic={editingAntiparasitic}
+      />
+
+      {selectedPetForDossier && (
+        <PetDossierModal
+          petId={selectedPetForDossier}
+          open={showPetDossierModal}
+          onOpenChange={setShowPetDossierModal}
+        />
+      )}
     </div>
   );
 }

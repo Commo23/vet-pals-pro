@@ -14,6 +14,7 @@ import { PetDossierModal } from "@/components/modals/PetDossierModal";
 import { MedicalStats } from "@/components/MedicalStats";
 import { ClientProvider, useClients, Pet } from "@/contexts/ClientContext";
 import { useSettings } from "@/contexts/SettingsContext";
+import { useDisplayPreference } from "@/hooks/use-display-preference";
 import { calculateAge } from "@/lib/utils";
 
 const statusStyles = {
@@ -24,10 +25,11 @@ const statusStyles = {
 
 const PetsContent = () => {
   const { pets, clients, consultations, getConsultationsByPetId } = useClients();
+  const { currentView } = useDisplayPreference('pets');
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>(currentView);
   const { settings } = useSettings();
   const speciesList = settings.species.split(',').map(s => s.trim()).filter(s => s.length > 0);
   const [showPetModal, setShowPetModal] = useState(false);

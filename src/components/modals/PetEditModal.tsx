@@ -202,20 +202,15 @@ export function PetEditModal({ open, onOpenChange, pet }: PetEditModalProps) {
           
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="weight">Poids (kg)</Label>
-              <Input
-                id="weight"
-                value={formData.weight}
-                onChange={handleChange}
-              />
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="color">Couleur</Label>
               <Input
                 id="color"
                 value={formData.color}
                 onChange={handleChange}
               />
+            </div>
+            <div className="space-y-2">
+              {/* Champ vide pour maintenir la grille */}
             </div>
           </div>
           

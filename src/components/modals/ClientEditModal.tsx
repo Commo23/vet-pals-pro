@@ -24,6 +24,7 @@ export function ClientEditModal({ open, onOpenChange, client }: ClientEditModalP
     address: "",
     city: "",
     postalCode: "",
+    idNumber: "",
     notes: ""
   });
 
@@ -37,6 +38,7 @@ export function ClientEditModal({ open, onOpenChange, client }: ClientEditModalP
         address: client.address || "",
         city: client.city || "",
         postalCode: client.postalCode || "",
+        idNumber: client.idNumber || "",
         notes: client.notes || ""
       });
     }
@@ -97,13 +99,12 @@ export function ClientEditModal({ open, onOpenChange, client }: ClientEditModalP
           
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email *</Label>
+              <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
                 type="email"
                 value={formData.email}
                 onChange={handleChange}
-                required
               />
             </div>
             <div className="space-y-2">
@@ -143,6 +144,16 @@ export function ClientEditModal({ open, onOpenChange, client }: ClientEditModalP
                 onChange={handleChange}
               />
             </div>
+          </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="idNumber">N° pièce d'identité</Label>
+            <Input
+              id="idNumber"
+              value={formData.idNumber}
+              onChange={handleChange}
+              placeholder="Numéro de carte d'identité, passeport, etc."
+            />
           </div>
           
           <div className="space-y-2">

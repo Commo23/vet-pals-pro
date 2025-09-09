@@ -18,6 +18,7 @@ import History from "./pages/History";
 import Farm from "./pages/Farm";
 import Vaccinations from "./pages/Vaccinations";
 import Antiparasites from "./pages/Antiparasites";
+import Stock from "./pages/Stock";
 import TestStats from "./pages/TestStats";
 import SimpleTest from "./pages/SimpleTest";
 import NotFound from "./pages/NotFound";
@@ -92,6 +93,12 @@ const App = () => (
                     <>
                       <VetNavigation />
                       <Antiparasites />
+                    </>
+                  } />
+                  <Route path="/stock" element={
+                    <>
+                      <VetNavigation />
+                      <Stock />
                     </>
                   } />
                   <Route path="/test-stats" element={

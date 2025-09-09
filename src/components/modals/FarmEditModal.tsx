@@ -29,6 +29,7 @@ const FarmEditModal = ({ open, onOpenChange, farm }: FarmEditModalProps) => {
   const [formData, setFormData] = useState<Partial<Farm>>({
     name: "",
     owner: "",
+    ownerIdNumber: "",
     address: "",
     coordinates: { latitude: 0, longitude: 0 },
     phone: "",
@@ -95,6 +96,7 @@ const FarmEditModal = ({ open, onOpenChange, farm }: FarmEditModalProps) => {
       setFormData({
         name: "",
         owner: "",
+        ownerIdNumber: "",
         address: "",
         coordinates: { latitude: 0, longitude: 0 },
         phone: "",
@@ -271,6 +273,15 @@ const FarmEditModal = ({ open, onOpenChange, farm }: FarmEditModalProps) => {
                   value={formData.owner || ""}
                   onChange={(e) => handleChange("owner", e.target.value)}
                   placeholder="Nom du propriétaire"
+                />
+              </div>
+              <div>
+                <Label htmlFor="ownerIdNumber">N° pièce d'identité du propriétaire</Label>
+                <Input
+                  id="ownerIdNumber"
+                  value={formData.ownerIdNumber || ""}
+                  onChange={(e) => handleChange("ownerIdNumber", e.target.value)}
+                  placeholder="Numéro de carte d'identité, passeport, etc."
                 />
               </div>
               <div className="md:col-span-2">

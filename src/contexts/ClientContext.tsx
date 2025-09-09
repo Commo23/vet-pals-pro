@@ -10,6 +10,7 @@ export interface Client {
   address?: string;
   city?: string;
   postalCode?: string;
+  idNumber?: string; // N° pièce d'identité
   notes?: string;
   pets: Pet[];
   lastVisit: string;
@@ -132,6 +133,7 @@ export interface Farm {
   id: number;
   name: string;
   owner: string;
+  ownerIdNumber?: string; // N° pièce d'identité du propriétaire
   address: string;
   coordinates?: {
     latitude: number;
@@ -193,8 +195,10 @@ export interface Vaccination {
   clientName: string;
   vaccineName: string;
   vaccineType: 'core' | 'non-core' | 'rabies' | 'custom';
+  vaccinationCategory: 'new' | 'reminder'; // Nouveau champ pour distinguer
   dateGiven: string;
-  nextDueDate: string;
+  nextDueDate: string; // Date de rappel choisie (modifiable par le vétérinaire)
+  calculatedDueDate?: string; // Date suggérée par le protocole (non modifiable)
   batchNumber?: string;
   veterinarian: string;
   notes?: string;
@@ -204,6 +208,21 @@ export interface Vaccination {
   adverseReactions?: string;
   manufacturer?: string;
   expirationDate?: string;
+  createdAt: string;
+  // Nouveaux champs pour les rappels
+  originalVaccinationId?: number; // ID du vaccin original (pour les rappels)
+  reminderAppointmentId?: number; // ID du rendez-vous de rappel
+  isReminder?: boolean; // Indique si c'est un rappel
+  reminderHistory?: VaccinationReminder[]; // Historique des rappels
+}
+
+export interface VaccinationReminder {
+  id: number;
+  vaccinationId: number;
+  appointmentId: number;
+  scheduledDate: string;
+  status: 'scheduled' | 'completed' | 'missed' | 'cancelled';
+  notes?: string;
   createdAt: string;
 }
 
@@ -277,6 +296,9 @@ interface ClientContextType {
   vaccinationProtocols: VaccinationProtocol[];
   antiparasitics: Antiparasitic[];
   antiparasiticProtocols: AntiparasiticProtocol[];
+  stockItems: StockItem[];
+  stockAlerts: StockAlert[];
+  stockMovements: StockMovement[];
   addClient: (clientData: Omit<Client, 'id' | 'pets' | 'lastVisit' | 'totalVisits'>) => void;
   addPet: (petData: Omit<Pet, 'id'>) => void;
   addConsultation: (consultationData: Omit<Consultation, 'id' | 'createdAt'>) => void;
@@ -285,10 +307,12 @@ interface ClientContextType {
   addFarm: (farmData: Omit<Farm, 'id' | 'createdAt'>) => void;
 
   addFarmIntervention: (interventionData: Omit<FarmIntervention, 'id' | 'createdAt'>) => void;
-  addVaccination: (vaccinationData: Omit<Vaccination, 'id' | 'createdAt'>) => void;
+  addVaccination: (vaccinationData: Omit<Vaccination, 'id' | 'createdAt'>) => number; // returns new vaccination id
   addVaccinationProtocol: (protocolData: Omit<VaccinationProtocol, 'id' | 'createdAt' | 'updatedAt'>) => void;
   addAntiparasitic: (antiparasiticData: Omit<Antiparasitic, 'id' | 'createdAt'>) => void;
   addAntiparasiticProtocol: (protocolData: Omit<AntiparasiticProtocol, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  addStockItem: (itemData: Omit<StockItem, 'id' | 'lastUpdated' | 'totalValue'>) => StockItem;
+  addStockMovement: (movementData: Omit<StockMovement, 'id'>) => StockMovement;
   updateClient: (id: number, clientData: Partial<Client>) => void;
   updatePet: (id: number, petData: Partial<Pet>) => void;
   updateConsultation: (id: number, consultationData: Partial<Consultation>) => void;
@@ -301,6 +325,7 @@ interface ClientContextType {
   updateVaccinationProtocol: (id: number, protocolData: Partial<VaccinationProtocol>) => void;
   updateAntiparasitic: (id: number, antiparasiticData: Partial<Antiparasitic>) => void;
   updateAntiparasiticProtocol: (id: number, protocolData: Partial<AntiparasiticProtocol>) => void;
+  updateStockItem: (id: number, updates: Partial<StockItem>) => StockItem | undefined;
   deletePet: (id: number) => void;
   deleteConsultation: (id: number) => void;
   deleteAppointment: (id: number) => void;
@@ -312,6 +337,7 @@ interface ClientContextType {
   deleteVaccinationProtocol: (id: number) => void;
   deleteAntiparasitic: (id: number) => void;
   deleteAntiparasiticProtocol: (id: number) => void;
+  deleteStockItem: (id: number) => void;
   resetData: () => void;
   exportData: () => void;
   importData: (data: { clients: Client[], pets: Pet[], consultations: Consultation[], appointments: Appointment[], prescriptions: Prescription[], farms: Farm[], farmInterventions: FarmIntervention[] }) => void;
@@ -356,7 +382,19 @@ interface ClientContextType {
   getOverdueVaccinations: () => Vaccination[];
   getUpcomingVaccinations: () => Vaccination[];
   getVaccinationsByStatus: (status: Vaccination['status']) => Vaccination[];
+  createVaccinationReminder: (originalVaccinationId: number, appointmentDate: string, appointmentTime: string) => any;
+  completeVaccinationReminder: (vaccinationId: number, appointmentId: number, newNextDueDate?: string) => any;
+  confirmVaccinationReminder: (vaccinationId: number, confirmationData: {
+    datePerformed: string;
+    veterinarian: string;
+    batchNumber?: string;
+    notes?: string;
+    newNextDueDate?: string;
+  }) => any;
+  updateVaccinationStatuses: () => Vaccination[];
+  calculateDueDateFromProtocol: (vaccineName: string, species: string, dateGiven: string) => string | null;
   updateClientStats: (clientId: number) => { totalVisits: number; lastVisit: string } | undefined;
+  getStockAlerts: () => StockAlert[];
 }
 
 const ClientContext = createContext<ClientContextType | undefined>(undefined);
@@ -372,6 +410,7 @@ const initialClients: Client[] = [
     address: "123 Rue de la Paix",
     city: "Paris",
     postalCode: "75001",
+    idNumber: "1234567890123",
     pets: [
       {
         id: 1,
@@ -421,6 +460,7 @@ const initialClients: Client[] = [
     address: "45 Avenue des Roses",
     city: "Lyon",
     postalCode: "69000",
+    idNumber: "9876543210987",
     pets: [
       {
         id: 2,
@@ -453,6 +493,7 @@ const initialClients: Client[] = [
     address: "78 Boulevard Maritime",
     city: "Marseille",
     postalCode: "13000",
+    idNumber: "4567891234567",
     pets: [
       {
         id: 3,
@@ -1328,6 +1369,249 @@ const initialAntiparasiticProtocols: AntiparasiticProtocol[] = [
   }
 ];
 
+// Données initiales pour la gestion de stock
+const initialStockItems: StockItem[] = [
+  // Médicaments
+  {
+    id: 1,
+    name: 'Amoxicilline 500mg',
+    category: 'medication',
+    subcategory: 'Antibiotique',
+    description: 'Antibiotique à large spectre',
+    manufacturer: 'Boehringer Ingelheim',
+    batchNumber: 'AMX2024001',
+    dosage: '500mg',
+    unit: 'box',
+    currentStock: 15,
+    minimumStock: 5,
+    maximumStock: 50,
+    purchasePrice: 20.00,
+    sellingPrice: 25.50,
+    totalValue: 300.00,
+    expirationDate: '2025-12-31',
+    supplier: 'Pharmacie Vétérinaire Centrale',
+    location: 'Armoire A - Étagère 1',
+    notes: 'Stockage à température ambiante',
+    lastUpdated: new Date().toISOString(),
+    lastRestocked: '2024-01-15',
+    isActive: true,
+    barcode: '1234567890123',
+    sku: 'MED-AMX-500'
+  },
+  {
+    id: 2,
+    name: 'Frontline Combo Spot-On',
+    category: 'medication',
+    subcategory: 'Antiparasitaire',
+    description: 'Traitement contre puces et tiques',
+    manufacturer: 'Boehringer Ingelheim',
+    batchNumber: 'FRC2024001',
+    dosage: '1 pipette',
+    unit: 'pack',
+    currentStock: 8,
+    minimumStock: 10,
+    maximumStock: 100,
+    purchasePrice: 15.00,
+    sellingPrice: 18.75,
+    totalValue: 120.00,
+    expirationDate: '2026-06-30',
+    supplier: 'VetoSupply Maroc',
+    location: 'Armoire B - Étagère 2',
+    notes: 'Pour chiens 20-40kg',
+    lastUpdated: new Date().toISOString(),
+    lastRestocked: '2024-01-10',
+    isActive: true,
+    barcode: '2345678901234',
+    sku: 'ANT-FRONT-20-40'
+  },
+  // Vaccins
+  {
+    id: 3,
+    name: 'DHPP Canine',
+    category: 'vaccine',
+    subcategory: 'Vaccin Core',
+    description: 'Vaccin contre Distemper, Hépatite, Parvovirus, Parainfluenza',
+    manufacturer: 'Merial',
+    batchNumber: 'DHPP2024001',
+    dosage: '1 dose',
+    unit: 'vial',
+    currentStock: 25,
+    minimumStock: 10,
+    maximumStock: 100,
+    purchasePrice: 9.50,
+    sellingPrice: 12.00,
+    totalValue: 237.50,
+    expirationDate: '2025-08-15',
+    supplier: 'Vaccins Vétérinaires SA',
+    location: 'Réfrigérateur - Étagère 1',
+    notes: 'Conservation 2-8°C',
+    lastUpdated: new Date().toISOString(),
+    lastRestocked: '2024-01-20',
+    isActive: true,
+    barcode: '3456789012345',
+    sku: 'VAC-DHPP-001'
+  },
+  {
+    id: 4,
+    name: 'Rage Canine',
+    category: 'vaccine',
+    subcategory: 'Vaccin Obligatoire',
+    description: 'Vaccin antirabique obligatoire',
+    manufacturer: 'Merial',
+    batchNumber: 'RAB2024001',
+    dosage: '1 dose',
+    unit: 'vial',
+    currentStock: 12,
+    minimumStock: 5,
+    maximumStock: 50,
+    purchasePrice: 12.00,
+    sellingPrice: 15.00,
+    totalValue: 144.00,
+    expirationDate: '2025-10-20',
+    supplier: 'Vaccins Vétérinaires SA',
+    location: 'Réfrigérateur - Étagère 2',
+    notes: 'Conservation 2-8°C - Obligatoire',
+    lastUpdated: new Date().toISOString(),
+    lastRestocked: '2024-01-18',
+    isActive: true,
+    barcode: '4567890123456',
+    sku: 'VAC-RAB-001'
+  },
+  // Consommables
+  {
+    id: 5,
+    name: 'Seringues 5ml',
+    category: 'consumable',
+    subcategory: 'Matériel d\'injection',
+    description: 'Seringues stériles 5ml avec aiguilles',
+    manufacturer: 'BD Medical',
+    batchNumber: 'SYR2024001',
+    dosage: '5ml',
+    unit: 'box',
+    currentStock: 50,
+    minimumStock: 20,
+    maximumStock: 200,
+    purchasePrice: 0.35,
+    sellingPrice: 0.45,
+    totalValue: 17.50,
+    expirationDate: '2027-03-15',
+    supplier: 'Matériel Médical Pro',
+    location: 'Armoire C - Étagère 1',
+    notes: 'Stériles, usage unique',
+    lastUpdated: new Date().toISOString(),
+    lastRestocked: '2024-01-12',
+    isActive: true,
+    barcode: '5678901234567',
+    sku: 'CON-SYR-5ML'
+  },
+  {
+    id: 6,
+    name: 'Masques chirurgicaux',
+    category: 'consumable',
+    subcategory: 'Protection',
+    description: 'Masques chirurgicaux jetables',
+    manufacturer: '3M',
+    batchNumber: 'MSK2024001',
+    dosage: '1 unité',
+    unit: 'box',
+    currentStock: 200,
+    minimumStock: 50,
+    maximumStock: 500,
+    purchasePrice: 0.12,
+    sellingPrice: 0.15,
+    totalValue: 24.00,
+    expirationDate: '2026-12-31',
+    supplier: 'Protection Médicale',
+    location: 'Armoire D - Étagère 1',
+    notes: 'Type IIR, boîte de 50',
+    lastUpdated: new Date().toISOString(),
+    lastRestocked: '2024-01-08',
+    isActive: true,
+    barcode: '6789012345678',
+    sku: 'CON-MSK-50'
+  },
+  {
+    id: 7,
+    name: 'Gants nitrile',
+    category: 'consumable',
+    subcategory: 'Protection',
+    description: 'Gants nitrile non poudrés',
+    manufacturer: 'Ansell',
+    batchNumber: 'GNT2024001',
+    dosage: '1 paire',
+    unit: 'box',
+    currentStock: 30,
+    minimumStock: 10,
+    maximumStock: 100,
+    purchasePrice: 0.20,
+    sellingPrice: 0.25,
+    totalValue: 6.00,
+    expirationDate: '2026-08-20',
+    supplier: 'Protection Médicale',
+    location: 'Armoire D - Étagère 2',
+    notes: 'Taille M, boîte de 100',
+    lastUpdated: new Date().toISOString(),
+    lastRestocked: '2024-01-05',
+    isActive: true,
+    barcode: '7890123456789',
+    sku: 'CON-GNT-M-100'
+  },
+  // Équipement
+  {
+    id: 8,
+    name: 'Thermomètre digital',
+    category: 'equipment',
+    subcategory: 'Diagnostic',
+    description: 'Thermomètre digital vétérinaire',
+    manufacturer: 'Gima',
+    batchNumber: 'THM2024001',
+    dosage: '1 unité',
+    unit: 'unit',
+    currentStock: 3,
+    minimumStock: 2,
+    maximumStock: 10,
+    purchasePrice: 35.00,
+    sellingPrice: 45.00,
+    totalValue: 105.00,
+    expirationDate: undefined,
+    supplier: 'Équipement Vétérinaire',
+    location: 'Bureau - Tiroir 1',
+    notes: 'Résistant à l\'eau, écran LCD',
+    lastUpdated: new Date().toISOString(),
+    lastRestocked: '2024-01-03',
+    isActive: true,
+    barcode: '8901234567890',
+    sku: 'EQP-THM-DIG'
+  },
+  // Suppléments
+  {
+    id: 9,
+    name: 'Vitamines B Complex',
+    category: 'supplement',
+    subcategory: 'Vitamines',
+    description: 'Complexe vitaminique B pour animaux',
+    manufacturer: 'Virbac',
+    batchNumber: 'VIT2024001',
+    dosage: '1ml',
+    unit: 'bottle',
+    currentStock: 5,
+    minimumStock: 3,
+    maximumStock: 20,
+    purchasePrice: 6.50,
+    sellingPrice: 8.50,
+    totalValue: 32.50,
+    expirationDate: '2025-11-30',
+    supplier: 'Suppléments Vétérinaires',
+    location: 'Armoire A - Étagère 3',
+    notes: 'Flacon 50ml',
+    lastUpdated: new Date().toISOString(),
+    lastRestocked: '2024-01-14',
+    isActive: true,
+    barcode: '9012345678901',
+    sku: 'SUP-VIT-B-50'
+  }
+];
+
 const initialVaccinationProtocols: VaccinationProtocol[] = [
   // Protocoles pour Chiens
   {
@@ -1506,6 +1790,9 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       const savedVaccinationProtocols = localStorage.getItem('vetpro-vaccinationProtocols');
       const savedAntiparasitics = localStorage.getItem('vetpro-antiparasitics');
       const savedAntiparasiticProtocols = localStorage.getItem('vetpro-antiparasiticProtocols');
+      const savedStockItems = localStorage.getItem('vetpro-stockItems');
+      const savedStockAlerts = localStorage.getItem('vetpro-stockAlerts');
+      const savedStockMovements = localStorage.getItem('vetpro-stockMovements');
       console.log('🔍 loadDataFromStorage - DEBUGGING ANTIPARASITICS:');
       console.log('   savedAntiparasitics raw:', savedAntiparasitics);
       console.log('   localStorage vetpro-antiparasitics exists:', !!localStorage.getItem('vetpro-antiparasitics'));
@@ -1524,6 +1811,9 @@ export function ClientProvider({ children }: { children: ReactNode }) {
         const parsedVaccinationProtocols = savedVaccinationProtocols ? JSON.parse(savedVaccinationProtocols) : initialVaccinationProtocols;
         const parsedAntiparasitics = savedAntiparasitics ? JSON.parse(savedAntiparasitics) : initialAntiparasitics;
         const parsedAntiparasiticProtocols = savedAntiparasiticProtocols ? JSON.parse(savedAntiparasiticProtocols) : initialAntiparasiticProtocols;
+        const parsedStockItems = savedStockItems ? JSON.parse(savedStockItems) : initialStockItems;
+        const parsedStockAlerts = savedStockAlerts ? JSON.parse(savedStockAlerts) : [];
+        const parsedStockMovements = savedStockMovements ? JSON.parse(savedStockMovements) : [];
         console.log('✅ loadDataFromStorage - PARSED ANTIPARASITICS:');
         console.log('   parsedAntiparasitics:', parsedAntiparasitics);
         console.log('   Length:', parsedAntiparasitics?.length || 0);
@@ -1548,7 +1838,10 @@ export function ClientProvider({ children }: { children: ReactNode }) {
           vaccinations: parsedVaccinations,
           vaccinationProtocols: parsedVaccinationProtocols,
           antiparasitics: parsedAntiparasitics,
-          antiparasiticProtocols: parsedAntiparasiticProtocols
+          antiparasiticProtocols: parsedAntiparasiticProtocols,
+          stockItems: parsedStockItems,
+          stockAlerts: parsedStockAlerts,
+          stockMovements: parsedStockMovements
         };
       }
     } catch (error) {
@@ -1573,7 +1866,10 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       vaccinations: initialVaccinations,
       vaccinationProtocols: initialVaccinationProtocols,
       antiparasitics: initialAntiparasitics,
-      antiparasiticProtocols: initialAntiparasiticProtocols
+      antiparasiticProtocols: initialAntiparasiticProtocols,
+      stockItems: initialStockItems,
+      stockAlerts: [],
+      stockMovements: []
     };
   };
 
@@ -1590,7 +1886,10 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     vaccinationsData: Vaccination[] = vaccinations,
     vaccinationProtocolsData: VaccinationProtocol[] = vaccinationProtocols,
     antiparasiticsData: Antiparasitic[] = antiparasitics,
-    antiparasiticProtocolsData: AntiparasiticProtocol[] = antiparasiticProtocols
+    antiparasiticProtocolsData: AntiparasiticProtocol[] = antiparasiticProtocols,
+    stockItemsData: StockItem[] = stockItems,
+    stockAlertsData: StockAlert[] = stockAlerts,
+    stockMovementsData: StockMovement[] = stockMovements
   ) => {
     try {
       localStorage.setItem('vetpro-clients', JSON.stringify(clientsData));
@@ -1605,6 +1904,9 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('vetpro-vaccinationProtocols', JSON.stringify(vaccinationProtocolsData));
       localStorage.setItem('vetpro-antiparasitics', JSON.stringify(antiparasiticsData));
       localStorage.setItem('vetpro-antiparasiticProtocols', JSON.stringify(antiparasiticProtocolsData));
+      localStorage.setItem('vetpro-stockItems', JSON.stringify(stockItemsData));
+      localStorage.setItem('vetpro-stockAlerts', JSON.stringify(stockAlertsData));
+      localStorage.setItem('vetpro-stockMovements', JSON.stringify(stockMovementsData));
       console.log('saveDataToStorage - antiparasitics saved:', antiparasiticsData);
     } catch (error) {
       console.error('Erreur lors de la sauvegarde des données:', error);
@@ -1624,6 +1926,11 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   const [vaccinationProtocols, setVaccinationProtocols] = useState<VaccinationProtocol[]>(initialData.vaccinationProtocols);
   const [antiparasitics, setAntiparasitics] = useState<Antiparasitic[]>(initialData.antiparasitics);
   const [antiparasiticProtocols, setAntiparasiticProtocols] = useState<AntiparasiticProtocol[]>(initialData.antiparasiticProtocols);
+  
+  // États pour la gestion de stock
+  const [stockItems, setStockItems] = useState<StockItem[]>(initialData.stockItems || []);
+  const [stockAlerts, setStockAlerts] = useState<StockAlert[]>(initialData.stockAlerts || []);
+  const [stockMovements, setStockMovements] = useState<StockMovement[]>(initialData.stockMovements || []);
   
   console.log('🚀 ClientContext - ANTIPARASITICS DEBUG:');
   console.log('   Initial antiparasitics from storage:', initialData.antiparasitics);
@@ -1789,6 +2096,112 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     setClients(updatedClients);
     
     return { totalVisits, lastVisit };
+  };
+
+  // Fonctions de gestion de stock
+  const addStockItem = (itemData: Omit<StockItem, 'id' | 'lastUpdated' | 'totalValue'>) => {
+    const newItem: StockItem = {
+      ...itemData,
+      id: Math.max(...stockItems.map(item => item.id), 0) + 1,
+      lastUpdated: new Date().toISOString(),
+      totalValue: itemData.currentStock * itemData.purchasePrice
+    };
+    
+    const updatedItems = [...stockItems, newItem];
+    setStockItems(updatedItems);
+    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, updatedItems, stockAlerts, stockMovements);
+    
+    return newItem;
+  };
+
+  const updateStockItem = (id: number, updates: Partial<StockItem>) => {
+    const updatedItems = stockItems.map(item => {
+      if (item.id === id) {
+        const updatedItem = { ...item, ...updates };
+        // Recalculer la valeur totale si le stock ou le prix d'achat a changé
+        if (updates.currentStock !== undefined || updates.purchasePrice !== undefined) {
+          updatedItem.totalValue = updatedItem.currentStock * updatedItem.purchasePrice;
+        }
+        updatedItem.lastUpdated = new Date().toISOString();
+        return updatedItem;
+      }
+      return item;
+    });
+    
+    setStockItems(updatedItems);
+    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, updatedItems, stockAlerts, stockMovements);
+    
+    return updatedItems.find(item => item.id === id);
+  };
+
+  const deleteStockItem = (id: number) => {
+    const updatedItems = stockItems.filter(item => item.id !== id);
+    setStockItems(updatedItems);
+    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, updatedItems, stockAlerts, stockMovements);
+  };
+
+  const addStockMovement = (movementData: Omit<StockMovement, 'id'>) => {
+    const newMovement: StockMovement = {
+      ...movementData,
+      id: Math.max(...stockMovements.map(m => m.id), 0) + 1
+    };
+    
+    const updatedMovements = [...stockMovements, newMovement];
+    setStockMovements(updatedMovements);
+    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, updatedMovements);
+    
+    return newMovement;
+  };
+
+  const getStockAlerts = () => {
+    const alerts: StockAlert[] = [];
+    const today = new Date().toISOString().split('T')[0];
+    const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    
+    stockItems.forEach(item => {
+      // Alerte stock bas
+      if (item.currentStock <= item.minimumStock) {
+        alerts.push({
+          id: alerts.length + 1,
+          itemId: item.id,
+          itemName: item.name,
+          type: 'low_stock',
+          message: `Stock bas: ${item.currentStock} ${item.unit} restant(s)`,
+          severity: item.currentStock === 0 ? 'critical' : 'high',
+          createdAt: new Date().toISOString(),
+          isRead: false
+        });
+      }
+      
+      // Alerte expiration
+      if (item.expirationDate) {
+        if (item.expirationDate < today) {
+          alerts.push({
+            id: alerts.length + 1,
+            itemId: item.id,
+            itemName: item.name,
+            type: 'expired',
+            message: `Expiré le ${item.expirationDate}`,
+            severity: 'critical',
+            createdAt: new Date().toISOString(),
+            isRead: false
+          });
+        } else if (item.expirationDate <= thirtyDaysFromNow) {
+          alerts.push({
+            id: alerts.length + 1,
+            itemId: item.id,
+            itemName: item.name,
+            type: 'expiring_soon',
+            message: `Expire le ${item.expirationDate}`,
+            severity: 'medium',
+            createdAt: new Date().toISOString(),
+            isRead: false
+          });
+        }
+      }
+    });
+    
+    return alerts;
   };
 
   const addConsultation = (consultationData: Omit<Consultation, 'id' | 'createdAt'>) => {
@@ -2199,14 +2612,14 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       id: Math.max(...vaccinations.map(v => v.id), 0) + 1,
       createdAt: new Date().toISOString()
     };
-    
-    const updatedVaccinations = [...vaccinations, newVaccination];
-    setVaccinations(updatedVaccinations);
-    
-    // Mettre à jour les statistiques du client
-    updateClientStats(vaccinationData.clientId);
-    
-    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, updatedVaccinations);
+    setVaccinations(prevVaccinations => {
+      const updatedVaccinations = [...prevVaccinations, newVaccination];
+      updateClientStats(vaccinationData.clientId);
+      saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, updatedVaccinations);
+      console.log('🔄 addVaccination - total vaccinations after add:', updatedVaccinations.length, updatedVaccinations.map(v => ({id:v.id, category:v.vaccinationCategory})));
+      return updatedVaccinations;
+    });
+    return newVaccination.id;
   };
 
   const updateVaccination = (id: number, vaccinationData: Partial<Vaccination>) => {
@@ -2218,7 +2631,43 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   };
 
   const deleteVaccination = (id: number) => {
-    const updatedVaccinations = vaccinations.filter(vaccination => vaccination.id !== id);
+    console.log('🗑️ deleteVaccination - ID à supprimer:', id);
+    console.log('🗑️ deleteVaccination - Vaccinations avant suppression:', vaccinations.length);
+    
+    const vaccinationToDelete = vaccinations.find(v => v.id === id);
+    if (!vaccinationToDelete) {
+      console.log('🗑️ deleteVaccination - Vaccination non trouvée');
+      return;
+    }
+    
+    console.log('🗑️ deleteVaccination - Vaccination à supprimer:', {
+      id: vaccinationToDelete.id,
+      vaccineName: vaccinationToDelete.vaccineName,
+      vaccinationCategory: vaccinationToDelete.vaccinationCategory,
+      originalVaccinationId: vaccinationToDelete.originalVaccinationId
+    });
+    
+    let updatedVaccinations = [...vaccinations];
+    
+    if (vaccinationToDelete.vaccinationCategory === 'new') {
+      // Si on supprime une vaccination originale, supprimer aussi tous ses rappels
+      console.log('🗑️ deleteVaccination - Suppression d\'une vaccination originale, recherche des rappels liés...');
+      const relatedReminders = vaccinations.filter(v => v.originalVaccinationId === id);
+      console.log('🗑️ deleteVaccination - Rappels liés trouvés:', relatedReminders.length);
+      
+      // Supprimer la vaccination originale et tous ses rappels
+      updatedVaccinations = vaccinations.filter(vaccination => 
+        vaccination.id !== id && vaccination.originalVaccinationId !== id
+      );
+    } else {
+      // Si on supprime un rappel, supprimer uniquement ce rappel
+      console.log('🗑️ deleteVaccination - Suppression d\'un rappel uniquement');
+      updatedVaccinations = vaccinations.filter(vaccination => vaccination.id !== id);
+    }
+    
+    console.log('🗑️ deleteVaccination - Vaccinations après suppression:', updatedVaccinations.length);
+    console.log('🗑️ deleteVaccination - Vaccinations supprimées:', vaccinations.length - updatedVaccinations.length);
+    
     setVaccinations(updatedVaccinations);
     saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, updatedVaccinations);
   };
@@ -2246,6 +2695,40 @@ export function ClientProvider({ children }: { children: ReactNode }) {
 
   const getVaccinationsByStatus = (status: Vaccination['status']) => {
     return vaccinations.filter(v => v.status === status);
+  };
+
+  // Fonction pour mettre à jour automatiquement les statuts des vaccinations
+  const updateVaccinationStatuses = () => {
+    const today = new Date().toISOString().split('T')[0];
+    let hasUpdates = false;
+    
+    const updatedVaccinations = vaccinations.map(vaccination => {
+      // Si la vaccination est déjà complétée, ne pas la modifier
+      if (vaccination.status === 'completed') {
+        return vaccination;
+      }
+      
+      // Si la date de rappel est dépassée et pas encore marquée comme overdue
+      if (vaccination.nextDueDate < today && vaccination.status !== 'overdue') {
+        hasUpdates = true;
+        return { ...vaccination, status: 'overdue' as const };
+      }
+      
+      // Si la date de rappel est dans le futur et pas encore marquée comme scheduled
+      if (vaccination.nextDueDate >= today && vaccination.status !== 'scheduled') {
+        hasUpdates = true;
+        return { ...vaccination, status: 'scheduled' as const };
+      }
+      
+      return vaccination;
+    });
+    
+    if (hasUpdates) {
+      setVaccinations(updatedVaccinations);
+      saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, updatedVaccinations);
+    }
+    
+    return updatedVaccinations;
   };
 
   // Fonctions de gestion des protocoles de vaccination
@@ -2286,6 +2769,182 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     return vaccinationProtocols.filter(p => p.isActive);
   };
 
+  // Fonction pour calculer la date de rappel selon le protocole
+  const calculateDueDateFromProtocol = (vaccineName: string, species: string, dateGiven: string) => {
+    const protocol = vaccinationProtocols.find(p => 
+      p.name === vaccineName && p.species === species && p.isActive
+    );
+    
+    if (!protocol || !protocol.intervals.length) {
+      return null;
+    }
+
+    // Prendre le dernier intervalle (généralement le rappel annuel)
+    const lastInterval = protocol.intervals[protocol.intervals.length - 1];
+    const dueDate = new Date(dateGiven);
+    dueDate.setDate(dueDate.getDate() + lastInterval.offsetDays);
+    
+    return dueDate.toISOString().split('T')[0];
+  };
+
+  // Fonction pour créer un rappel de vaccination (nouvelle vaccination avec catégorie "reminder")
+  const createVaccinationReminder = (originalVaccinationId: number, appointmentDate: string, appointmentTime: string) => {
+    const originalVaccination = getVaccinationById(originalVaccinationId);
+    if (!originalVaccination) return;
+
+    // Créer un rendez-vous pour le rappel
+    const reminderAppointment: Omit<Appointment, 'id' | 'createdAt'> = {
+      clientId: originalVaccination.clientId,
+      clientName: originalVaccination.clientName,
+      petId: originalVaccination.petId,
+      petName: originalVaccination.petName,
+      date: appointmentDate,
+      time: appointmentTime,
+      type: 'vaccination',
+      duration: 30,
+      reason: `Rappel vaccinal - ${originalVaccination.vaccineName}`,
+      notes: `Rappel pour ${originalVaccination.vaccineName} (vaccination originale ID: ${originalVaccinationId})`,
+      status: 'scheduled',
+      reminderSent: false
+    };
+
+    // Ajouter le rendez-vous
+    addAppointment(reminderAppointment);
+    const appointmentId = Math.max(...appointments.map(a => a.id), 0) + 1;
+
+    // Créer une NOUVELLE vaccination avec catégorie "reminder"
+    const reminderVaccination: Omit<Vaccination, 'id' | 'createdAt'> = {
+      petId: originalVaccination.petId,
+      petName: originalVaccination.petName,
+      clientId: originalVaccination.clientId,
+      clientName: originalVaccination.clientName,
+      vaccineName: originalVaccination.vaccineName,
+      vaccineType: originalVaccination.vaccineType,
+      vaccinationCategory: 'reminder', // Marqué comme rappel
+      dateGiven: appointmentDate, // Date du rendez-vous
+      nextDueDate: originalVaccination.nextDueDate, // Garde la même date de prochain rappel
+      batchNumber: originalVaccination.batchNumber,
+      veterinarian: originalVaccination.veterinarian,
+      notes: `Rappel de ${originalVaccination.vaccineName} (original: ${originalVaccinationId})`,
+      status: 'scheduled',
+      cost: originalVaccination.cost,
+      location: originalVaccination.location,
+      manufacturer: originalVaccination.manufacturer,
+      originalVaccinationId: originalVaccinationId, // Lien vers l'original
+      reminderAppointmentId: appointmentId,
+      isReminder: true
+    };
+
+    // Ajouter la nouvelle vaccination (rappel)
+    addVaccination(reminderVaccination);
+
+    // Créer un enregistrement de rappel dans l'historique de l'original
+    const reminderRecord: VaccinationReminder = {
+      id: Math.max(...(originalVaccination.reminderHistory?.map(r => r.id) || [0]), 0) + 1,
+      vaccinationId: originalVaccinationId,
+      appointmentId: appointmentId,
+      scheduledDate: appointmentDate,
+      status: 'scheduled',
+      notes: `Rappel programmé pour ${originalVaccination.vaccineName}`,
+      createdAt: new Date().toISOString()
+    };
+
+    // Mettre à jour la vaccination originale avec l'historique des rappels
+    const updatedReminderHistory = [...(originalVaccination.reminderHistory || []), reminderRecord];
+    updateVaccination(originalVaccinationId, { 
+      reminderHistory: updatedReminderHistory
+    });
+
+    return { appointment: reminderAppointment, reminderVaccination, reminder: reminderRecord };
+  };
+
+  // Fonction pour marquer un rappel comme complété
+  const completeVaccinationReminder = (vaccinationId: number, appointmentId: number, newNextDueDate?: string) => {
+    const vaccination = getVaccinationById(vaccinationId);
+    if (!vaccination) return;
+
+    // Mettre à jour l'historique des rappels
+    const updatedReminderHistory = vaccination.reminderHistory?.map(reminder => 
+      reminder.appointmentId === appointmentId 
+        ? { ...reminder, status: 'completed' as const }
+        : reminder
+    ) || [];
+
+    // Mettre à jour la vaccination
+    const updateData: Partial<Vaccination> = {
+      status: 'completed',
+      reminderHistory: updatedReminderHistory,
+      reminderAppointmentId: undefined // Plus de rendez-vous en attente
+    };
+
+    // Si une nouvelle date de rappel est fournie, la mettre à jour
+    if (newNextDueDate) {
+      updateData.nextDueDate = newNextDueDate;
+    }
+
+    updateVaccination(vaccinationId, updateData);
+
+    // Mettre à jour le statut du rendez-vous
+    updateAppointment(appointmentId, { status: 'completed' });
+
+    return vaccination;
+  };
+
+  // Fonction pour confirmer qu'un rappel de vaccination a été effectué
+  const confirmVaccinationReminder = (vaccinationId: number, confirmationData: {
+    datePerformed: string;
+    veterinarian: string;
+    batchNumber?: string;
+    notes?: string;
+    newNextDueDate?: string;
+  }) => {
+    const vaccination = getVaccinationById(vaccinationId);
+    if (!vaccination) return null;
+
+    // Créer une nouvelle vaccination pour le rappel effectué
+    const reminderVaccination: Omit<Vaccination, 'id' | 'createdAt'> = {
+      petId: vaccination.petId,
+      petName: vaccination.petName,
+      clientId: vaccination.clientId,
+      clientName: vaccination.clientName,
+      vaccineName: vaccination.vaccineName,
+      vaccineType: vaccination.vaccineType,
+      vaccinationCategory: 'reminder',
+      dateGiven: confirmationData.datePerformed,
+      nextDueDate: confirmationData.newNextDueDate || vaccination.nextDueDate,
+      calculatedDueDate: vaccination.calculatedDueDate,
+      batchNumber: confirmationData.batchNumber || vaccination.batchNumber,
+      veterinarian: confirmationData.veterinarian,
+      notes: confirmationData.notes || `Rappel effectué - ${vaccination.vaccineName}`,
+      status: 'completed',
+      cost: vaccination.cost,
+      location: vaccination.location,
+      manufacturer: vaccination.manufacturer,
+      expirationDate: vaccination.expirationDate,
+      adverseReactions: vaccination.adverseReactions,
+      originalVaccinationId: vaccinationId,
+      isReminder: true
+    };
+
+    // Ajouter la nouvelle vaccination
+    addVaccination(reminderVaccination);
+
+    // Mettre à jour la vaccination originale
+    const updateData: Partial<Vaccination> = {
+      status: 'completed',
+      reminderAppointmentId: undefined
+    };
+
+    // Si une nouvelle date de rappel est fournie, la mettre à jour
+    if (confirmationData.newNextDueDate) {
+      updateData.nextDueDate = confirmationData.newNextDueDate;
+    }
+
+    updateVaccination(vaccinationId, updateData);
+
+    return reminderVaccination;
+  };
+
   return (
     <ClientContext.Provider value={{
       clients,
@@ -2299,6 +2958,9 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       vaccinationProtocols,
       antiparasitics,
       antiparasiticProtocols,
+      stockItems,
+      stockAlerts,
+      stockMovements,
       addClient,
       addPet,
       addConsultation,
@@ -2310,6 +2972,8 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       addVaccinationProtocol,
       addAntiparasitic,
       addAntiparasiticProtocol,
+      addStockItem,
+      addStockMovement,
       updateClient,
       updatePet,
       updateConsultation,
@@ -2321,6 +2985,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       updateVaccinationProtocol,
       updateAntiparasitic,
       updateAntiparasiticProtocol,
+      updateStockItem,
       deletePet,
       deleteConsultation,
       deleteAppointment,
@@ -2331,6 +2996,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       deleteVaccinationProtocol,
       deleteAntiparasitic,
       deleteAntiparasiticProtocol,
+      deleteStockItem,
       resetData,
       exportData,
       importData,
@@ -2373,11 +3039,69 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       getOverdueVaccinations,
       getUpcomingVaccinations,
       getVaccinationsByStatus,
-      updateClientStats
+      createVaccinationReminder,
+      completeVaccinationReminder,
+      confirmVaccinationReminder,
+      updateVaccinationStatuses,
+      calculateDueDateFromProtocol,
+      updateClientStats,
+      getStockAlerts
     }}>
       {children}
     </ClientContext.Provider>
   );
+}
+
+// Interfaces pour la gestion de stock
+export interface StockItem {
+  id: number;
+  name: string;
+  category: 'medication' | 'vaccine' | 'consumable' | 'equipment' | 'supplement';
+  subcategory?: string;
+  description?: string;
+  manufacturer?: string;
+  batchNumber?: string;
+  dosage?: string;
+  unit: 'unit' | 'box' | 'vial' | 'bottle' | 'pack' | 'kg' | 'g' | 'ml' | 'l';
+  currentStock: number;
+  minimumStock: number;
+  maximumStock?: number;
+  purchasePrice: number; // Prix d'achat
+  sellingPrice: number; // Prix de vente
+  totalValue: number; // Valeur totale basée sur le prix d'achat
+  expirationDate?: string;
+  supplier?: string;
+  location?: string;
+  notes?: string;
+  lastUpdated: string;
+  lastRestocked?: string;
+  isActive: boolean;
+  barcode?: string;
+  sku?: string;
+}
+
+export interface StockAlert {
+  id: number;
+  itemId: number;
+  itemName: string;
+  type: 'low_stock' | 'expired' | 'expiring_soon';
+  message: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  createdAt: string;
+  isRead: boolean;
+}
+
+export interface StockMovement {
+  id: number;
+  itemId: number;
+  itemName: string;
+  type: 'in' | 'out' | 'adjustment' | 'transfer';
+  quantity: number;
+  reason: string;
+  reference?: string; // Numéro de facture, consultation, etc.
+  performedBy?: string;
+  date: string;
+  notes?: string;
 }
 
 export const useClients = () => {

@@ -10,6 +10,7 @@ import {
   Home,
   Syringe,
   Bug,
+  Package,
   Cog
 } from "lucide-react";
 
@@ -21,6 +22,7 @@ const navItems = [
   { icon: FileText, label: "Consultations", path: "/consultations" },
   { icon: Syringe, label: "Vaccinations", path: "/vaccinations" },
   { icon: Bug, label: "Antiparasites", path: "/antiparasites" },
+  { icon: Package, label: "Stock", path: "/stock" },
   { icon: BarChart3, label: "Historiques", path: "/history" },
   { icon: Tractor, label: "Farm Mgmt", path: "/farm" },
   { icon: Cog, label: "Paramètres", path: "/settings" }

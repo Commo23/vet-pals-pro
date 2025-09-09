@@ -8,6 +8,7 @@ import { Calendar, Clock, User, Heart, Plus, Search, Filter, Edit, Trash2, Check
 import { NewAppointmentModal } from "@/components/forms/NewAppointmentModal";
 import { useClients, Appointment } from "@/contexts/ClientContext";
 import { useToast } from "@/hooks/use-toast";
+import { useDisplayPreference } from "@/hooks/use-display-preference";
 import React from "react";
 
 const statusStyles = {
@@ -45,6 +46,7 @@ export default function Appointments() {
     getOverdueAppointments 
   } = useClients();
   const { toast } = useToast();
+  const { currentView } = useDisplayPreference('appointments');
   
   const [showNewAppointment, setShowNewAppointment] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -53,7 +55,12 @@ export default function Appointments() {
   const [filterDate, setFilterDate] = useState("all");
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
-  const [displayMode, setDisplayMode] = useState<'cards' | 'table'>('cards');
+  const [displayMode, setDisplayMode] = useState<'cards' | 'table'>(currentView);
+  
+  // Inline editing state
+  const [editingField, setEditingField] = useState<{ id: number; field: 'date' | 'time' | 'status' | 'reason'; } | null>(null);
+  const [fieldValue, setFieldValue] = useState<string>('');
+  
   // Date affichée pour la vue calendrier
   const [currentDate, setCurrentDate] = useState(() => {
     const d = new Date();
@@ -95,6 +102,18 @@ export default function Appointments() {
       title: "Statut mis à jour",
       description: `Le rendez-vous est maintenant ${statusLabels[newStatus].toLowerCase()}.`,
     });
+  };
+
+  const handleFieldSave = () => {
+    if (!editingField) return;
+    const { id, field } = editingField;
+    const appointment = appointments.find(a => a.id === id);
+    if (appointment) {
+      const updated = { ...appointment, [field]: fieldValue };
+      updateAppointment(id, updated as any);
+      toast({ title: 'Modifié', description: `${field} mis à jour`, });
+    }
+    setEditingField(null);
   };
 
   const handleDelete = (appointment: Appointment) => {
@@ -495,13 +514,41 @@ export default function Appointments() {
                           </td>
                           <td className="p-4">
                             <div className="space-y-1">
-                              <div className="flex items-center gap-2">
+                              <div 
+                                className="flex items-center gap-2 cursor-pointer"
+                                onClick={() => { setEditingField({ id: appointment.id, field: 'date' }); setFieldValue(appointment.date); }}
+                              >
                                 <Calendar className="h-4 w-4 text-muted-foreground" />
-                                <span>{new Date(appointment.date).toLocaleDateString('fr-FR')}</span>
+                                {editingField?.id === appointment.id && editingField.field === 'date' ? (
+                                  <Input
+                                    type="date"
+                                    value={fieldValue}
+                                    onChange={e => setFieldValue(e.target.value)}
+                                    onBlur={handleFieldSave}
+                                    autoFocus
+                                    className="w-32"
+                                  />
+                                ) : (
+                                  <span>{new Date(appointment.date).toLocaleDateString('fr-FR')}</span>
+                                )}
                               </div>
-                              <div className="flex items-center gap-2">
+                              <div 
+                                className="flex items-center gap-2 cursor-pointer"
+                                onClick={() => { setEditingField({ id: appointment.id, field: 'time' }); setFieldValue(appointment.time); }}
+                              >
                                 <Clock className="h-4 w-4 text-muted-foreground" />
-                                <span className="text-sm text-muted-foreground">{appointment.time}</span>
+                                {editingField?.id === appointment.id && editingField.field === 'time' ? (
+                                  <Input
+                                    type="time"
+                                    value={fieldValue}
+                                    onChange={e => setFieldValue(e.target.value)}
+                                    onBlur={handleFieldSave}
+                                    autoFocus
+                                    className="w-24"
+                                  />
+                                ) : (
+                                  <span className="text-sm text-muted-foreground">{appointment.time}</span>
+                                )}
                               </div>
                             </div>
                           </td>
@@ -512,17 +559,59 @@ export default function Appointments() {
                             </div>
                           </td>
                           <td className="p-4">
-                            <Badge className={statusStyles[appointment.status]}>
-                              {statusLabels[appointment.status]}
-                            </Badge>
+                            <div 
+                              className="cursor-pointer"
+                              onClick={() => { setEditingField({ id: appointment.id, field: 'status' }); setFieldValue(appointment.status); }}
+                            >
+                              {editingField?.id === appointment.id && editingField.field === 'status' ? (
+                                <Select
+                                  value={fieldValue}
+                                  onValueChange={value => {
+                                    setFieldValue(value);
+                                    updateAppointment(appointment.id, { status: value as any });
+                                    setEditingField(null);
+                                  }}
+                                >
+                                  <SelectTrigger className="w-32">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="scheduled">Planifié</SelectItem>
+                                    <SelectItem value="confirmed">Confirmé</SelectItem>
+                                    <SelectItem value="completed">Terminé</SelectItem>
+                                    <SelectItem value="cancelled">Annulé</SelectItem>
+                                    <SelectItem value="no-show">Absent</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <Badge className={statusStyles[appointment.status]}>
+                                  {statusLabels[appointment.status]}
+                                </Badge>
+                              )}
+                            </div>
                           </td>
                           <td className="p-4">
-                            <div className="max-w-xs">
-                              {appointment.reason && (
-                                <div className="text-sm">{appointment.reason}</div>
-                              )}
-                              {appointment.notes && (
-                                <div className="text-xs text-muted-foreground mt-1">{appointment.notes}</div>
+                            <div 
+                              className="max-w-xs cursor-pointer"
+                              onClick={() => { setEditingField({ id: appointment.id, field: 'reason' }); setFieldValue(appointment.reason || ''); }}
+                            >
+                              {editingField?.id === appointment.id && editingField.field === 'reason' ? (
+                                <Input
+                                  value={fieldValue}
+                                  onChange={e => setFieldValue(e.target.value)}
+                                  onBlur={handleFieldSave}
+                                  autoFocus
+                                  placeholder="Motif du rendez-vous"
+                                />
+                              ) : (
+                                <>
+                                  {appointment.reason && (
+                                    <div className="text-sm">{appointment.reason}</div>
+                                  )}
+                                  {appointment.notes && (
+                                    <div className="text-xs text-muted-foreground mt-1">{appointment.notes}</div>
+                                  )}
+                                </>
                               )}
                             </div>
                           </td>

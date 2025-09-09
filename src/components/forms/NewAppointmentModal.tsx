@@ -20,6 +20,7 @@ interface NewAppointmentModalProps {
   prefillPetId?: number;
   prefillType?: 'consultation' | 'vaccination' | 'chirurgie' | 'urgence' | 'controle' | 'sterilisation' | 'dentaire';
   prefillReason?: string;
+  originalVaccinationId?: number; // ID du vaccin original pour les rappels
 }
 
 export function NewAppointmentModal({ 
@@ -28,9 +29,11 @@ export function NewAppointmentModal({
   prefillClientId, 
   prefillPetId, 
   prefillType, 
-  prefillReason 
+  prefillReason,
+  originalVaccinationId,
 }: NewAppointmentModalProps) {
-  const { clients, pets, addAppointment, getPetsByOwnerId } = useClients();
+  const { clients, pets, addAppointment, getPetsByOwnerId,
+    createVaccinationReminder } = useClients();
   const { toast } = useToast();
   
   const [showClientModal, setShowClientModal] = useState(false);
@@ -191,6 +194,14 @@ export function NewAppointmentModal({
       status: 'scheduled',
       reminderSent: false
     });
+    // Si c'est un rappel de vaccination, créer le rappel de vaccination
+    if (prefillType === 'vaccination' && originalVaccinationId) {
+      createVaccinationReminder(originalVaccinationId, formData.date, formData.time);
+      toast({
+        title: "Rappel enregistré",
+        description: "Le rappel de vaccination a été ajouté."
+      });
+    }
     
     toast({
       title: "Rendez-vous planifié",

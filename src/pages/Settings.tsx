@@ -7,9 +7,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Edit, Trash2 } from "lucide-react";
 import { useClients } from "@/contexts/ClientContext";
-import { useSettings, FarmManagementSettings, ClinicSettings } from '@/contexts/SettingsContext';
+import { useSettings, FarmManagementSettings, ClinicSettings, DisplayPreferences } from '@/contexts/SettingsContext';
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Veterinarian {
   id: number;
@@ -21,7 +22,6 @@ interface Veterinarian {
 }
 
 const SETTINGS_KEY = 'vetpro-clinicSettings';
-const VETS_KEY = 'vetpro-veterinarians';
 // Valeurs par défaut pour Rabat, Maroc
 const DEFAULT_SETTINGS: ClinicSettings = {
   clinicName: 'Clinique du Soleil',
@@ -35,6 +35,17 @@ const DEFAULT_SETTINGS: ClinicSettings = {
   species: 'Chien, Chat, Bovins, Porcins, Volailles',
   showClinicInfo: true,
   showVetsInfo: true,
+  veterinarians: [], // Sera rempli dynamiquement avec DEFAULT_VETS
+  displayPreferences: {
+    clients: 'table',
+    pets: 'cards',
+    consultations: 'table',
+    appointments: 'table',
+    prescriptions: 'table',
+    farms: 'cards',
+    vaccinations: 'table',
+    antiparasitics: 'table'
+  },
   farmManagement: {
     farmTypes: [
       'Bovin laitier', 'Bovin viande', 'Porcin', 'Avicole', 'Ovin', 'Caprin', 
@@ -81,10 +92,16 @@ export default function Settings() {
     { id: 2, name: 'Dr. Marie Martin', title: 'Dr.', specialty: 'Chirurgie', phone: '+212 5 37 00 00 02', email: 'm.martin@cliniquedusoleil.ma' },
     { id: 3, name: 'Pr. Ahmed El Alaoui', title: 'Pr.', specialty: 'Dermatologie', phone: '+212 5 37 00 00 03', email: 'a.alaoui@cliniquedusoleil.ma' }
   ];
-  const [vets, setVets] = useState<Veterinarian[]>(() => {
-    const sv = localStorage.getItem(VETS_KEY);
-    return sv ? JSON.parse(sv) : DEFAULT_VETS;
-  });
+  
+  // Convertir les vétérinaires des paramètres en format Veterinarian
+  const vets = settings.veterinarians.map(vet => ({
+    id: vet.id,
+    name: vet.name,
+    title: vet.name.startsWith('Dr.') ? 'Dr.' : vet.name.startsWith('Pr.') ? 'Pr.' : 'Dr.',
+    specialty: 'Médecine générale', // Par défaut
+    phone: '',
+    email: ''
+  }));
   const [showVetModal, setShowVetModal] = useState(false);
   const [editVet, setEditVet] = useState<Veterinarian | null>(null);
   const [vetForm, setVetForm] = useState<Omit<Veterinarian, 'id'>>({ name: '', title: '', specialty: '', phone: '', email: '' });
@@ -100,12 +117,17 @@ export default function Settings() {
   const [showCertificationModal, setShowCertificationModal] = useState(false);
   const [newCertification, setNewCertification] = useState('');
   
-  // Load from localStorage once
+  // Initialiser les vétérinaires dans les paramètres si pas encore fait
   useEffect(() => {
-    if (!localStorage.getItem(VETS_KEY)) {
-      localStorage.setItem(VETS_KEY, JSON.stringify(DEFAULT_VETS));
+    if (settings.veterinarians.length === 0) {
+      const defaultVetsForSettings = DEFAULT_VETS.map(vet => ({
+        id: vet.id,
+        name: vet.name,
+        isActive: true
+      }));
+      updateSettings({ ...settings, veterinarians: defaultVetsForSettings });
     }
-  }, []);
+  }, [settings.veterinarians.length]);
 
   // Sync species avec listes dynamiques de pets
   const { pets } = useClients();
@@ -136,6 +158,23 @@ export default function Settings() {
     }
   };
 
+  // Gestion des préférences d'affichage
+  const handleDisplayPreferenceChange = (section: keyof DisplayPreferences, value: 'table' | 'cards') => {
+    const updatedPreferences = {
+      ...settings.displayPreferences,
+      [section]: value
+    };
+    const updatedSettings = {
+      ...settings,
+      displayPreferences: updatedPreferences
+    };
+    updateSettings(updatedSettings);
+    toast({ 
+      title: 'Préférence d\'affichage mise à jour', 
+      description: `${section} s'affichera maintenant en ${value === 'table' ? 'tableau' : 'cartes'}` 
+    });
+  };
+
   // Handlers for veterinarians
   const openNewVet = () => {
     setEditVet(null);
@@ -152,23 +191,33 @@ export default function Settings() {
       toast({ title: 'Erreur', description: 'Nom et titre requis', variant: 'destructive' });
       return;
     }
-    let updated: Veterinarian[];
+    
+    const fullName = `${vetForm.title} ${vetForm.name}`;
+    let updatedVets;
+    
     if (editVet) {
-      updated = vets.map(v => v.id === editVet.id ? { ...v, ...vetForm } : v);
+      updatedVets = settings.veterinarians.map(v => 
+        v.id === editVet.id 
+          ? { ...v, name: fullName, isActive: true }
+          : v
+      );
     } else {
-      const newVet: Veterinarian = { id: Math.max(0, ...vets.map(v => v.id)) + 1, ...vetForm };
-      updated = [...vets, newVet];
+      const newVet = { 
+        id: Math.max(0, ...settings.veterinarians.map(v => v.id)) + 1, 
+        name: fullName, 
+        isActive: true 
+      };
+      updatedVets = [...settings.veterinarians, newVet];
     }
-    setVets(updated);
-    localStorage.setItem(VETS_KEY, JSON.stringify(updated));
+    
+    updateSettings({ ...settings, veterinarians: updatedVets });
     toast({ title: 'Vétérinaire enregistré' });
     setShowVetModal(false);
   };
   const deleteVet = (id: number) => {
     if (!confirm('Supprimer ce vétérinaire ?')) return;
-    const updated = vets.filter(v => v.id !== id);
-    setVets(updated);
-    localStorage.setItem(VETS_KEY, JSON.stringify(updated));
+    const updatedVets = settings.veterinarians.filter(v => v.id !== id);
+    updateSettings({ ...settings, veterinarians: updatedVets });
     toast({ title: 'Vétérinaire supprimé' });
   };
 
@@ -339,7 +388,19 @@ export default function Settings() {
           <div className="flex gap-2">
             <Button onClick={saveSettings}>Enregistrer</Button>
             <Button variant="outline" onClick={() => {
-              updateSettings(DEFAULT_SETTINGS);
+              // Créer les paramètres par défaut avec les vétérinaires
+              const defaultVetsForSettings = DEFAULT_VETS.map(vet => ({
+                id: vet.id,
+                name: vet.name,
+                isActive: true
+              }));
+              
+              const resetSettings = {
+                ...DEFAULT_SETTINGS,
+                veterinarians: defaultVetsForSettings
+              };
+              
+              updateSettings(resetSettings);
               toast({ title: 'Paramètres réinitialisés', description: 'Valeurs par défaut restaurées.' });
             }}>
               Restaurer valeurs par défaut
@@ -393,10 +454,172 @@ export default function Settings() {
         </CardContent>
       </Card>
 
+      {/* Section des préférences d'affichage */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Préférences d'affichage</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Choisissez comment vous souhaitez afficher les différentes sections par défaut.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Clients */}
+              <div className="space-y-2">
+                <Label htmlFor="clients-display">Clients</Label>
+                <Select
+                  value={settings.displayPreferences.clients}
+                  onValueChange={(value: 'table' | 'cards') => handleDisplayPreferenceChange('clients', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="table">Tableau</SelectItem>
+                    <SelectItem value="cards">Cartes</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Animaux */}
+              <div className="space-y-2">
+                <Label htmlFor="pets-display">Animaux</Label>
+                <Select
+                  value={settings.displayPreferences.pets}
+                  onValueChange={(value: 'table' | 'cards') => handleDisplayPreferenceChange('pets', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="table">Tableau</SelectItem>
+                    <SelectItem value="cards">Cartes</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Consultations */}
+              <div className="space-y-2">
+                <Label htmlFor="consultations-display">Consultations</Label>
+                <Select
+                  value={settings.displayPreferences.consultations}
+                  onValueChange={(value: 'table' | 'cards') => handleDisplayPreferenceChange('consultations', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="table">Tableau</SelectItem>
+                    <SelectItem value="cards">Cartes</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Rendez-vous */}
+              <div className="space-y-2">
+                <Label htmlFor="appointments-display">Rendez-vous</Label>
+                <Select
+                  value={settings.displayPreferences.appointments}
+                  onValueChange={(value: 'table' | 'cards') => handleDisplayPreferenceChange('appointments', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="table">Tableau</SelectItem>
+                    <SelectItem value="cards">Cartes</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Prescriptions */}
+              <div className="space-y-2">
+                <Label htmlFor="prescriptions-display">Prescriptions</Label>
+                <Select
+                  value={settings.displayPreferences.prescriptions}
+                  onValueChange={(value: 'table' | 'cards') => handleDisplayPreferenceChange('prescriptions', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="table">Tableau</SelectItem>
+                    <SelectItem value="cards">Cartes</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Fermes */}
+              <div className="space-y-2">
+                <Label htmlFor="farms-display">Fermes</Label>
+                <Select
+                  value={settings.displayPreferences.farms}
+                  onValueChange={(value: 'table' | 'cards') => handleDisplayPreferenceChange('farms', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="table">Tableau</SelectItem>
+                    <SelectItem value="cards">Cartes</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Vaccinations */}
+              <div className="space-y-2">
+                <Label htmlFor="vaccinations-display">Vaccinations</Label>
+                <Select
+                  value={settings.displayPreferences.vaccinations}
+                  onValueChange={(value: 'table' | 'cards') => handleDisplayPreferenceChange('vaccinations', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="table">Tableau</SelectItem>
+                    <SelectItem value="cards">Cartes</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Antiparasitaires */}
+              <div className="space-y-2">
+                <Label htmlFor="antiparasitics-display">Antiparasitaires</Label>
+                <Select
+                  value={settings.displayPreferences.antiparasitics}
+                  onValueChange={(value: 'table' | 'cards') => handleDisplayPreferenceChange('antiparasitics', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="table">Tableau</SelectItem>
+                    <SelectItem value="cards">Cartes</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader className="flex justify-between items-center">
           <CardTitle>Vétérinaires</CardTitle>
-          <Button onClick={openNewVet} className="gap-2"><Plus className="h-4 w-4" /> Ajouter</Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                console.log('Vétérinaires dans settings:', settings.veterinarians);
+                console.log('Vétérinaires affichés:', vets);
+              }}
+            >
+              Debug
+            </Button>
+            <Button onClick={openNewVet} className="gap-2"><Plus className="h-4 w-4" /> Ajouter</Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-2">
           {vets.length === 0 ? <p className="text-muted-foreground">Aucun vétérinaire configuré</p> : vets.map(v => (

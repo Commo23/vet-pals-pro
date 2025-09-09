@@ -5,7 +5,7 @@ import { Calendar, Pill, Clock, AlertCircle, CheckCircle, XCircle, Plus, Edit, T
 import { useState } from "react";
 import { Prescription, useClients } from "@/contexts/ClientContext";
 import { useToast } from "@/hooks/use-toast";
-import { NewPrescriptionModal } from "@/components/forms/NewPrescriptionModal";
+import NewPrescriptionModal from "@/components/forms/NewPrescriptionModal";
 import { PrescriptionEditModal } from "@/components/modals/PrescriptionEditModal";
 import { PrescriptionPrint } from "@/components/PrescriptionPrint";
 

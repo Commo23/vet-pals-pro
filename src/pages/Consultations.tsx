@@ -4,18 +4,24 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Search, FileText, Heart, User, Calendar, Pill, Thermometer, Edit, Trash2 } from "lucide-react";
+import { Plus, Search, FileText, Heart, User, Calendar, Pill, Thermometer, Edit, Trash2, Grid, List } from "lucide-react";
 import { NewConsultationModal } from "@/components/forms/NewConsultationModal";
 import { ConsultationEditModal } from "@/components/modals/ConsultationEditModal";
 import { ConsultationPrint } from "@/components/ConsultationPrint";
 import { useClients, Consultation } from "@/contexts/ClientContext";
+import { useSettings } from "@/contexts/SettingsContext";
 import { useToast } from "@/hooks/use-toast";
+import { useDisplayPreference } from "@/hooks/use-display-preference";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const Consultations = () => {
   const { consultations, deleteConsultation } = useClients();
+  const { settings } = useSettings();
   const { toast } = useToast();
+  const { currentView } = useDisplayPreference('consultations');
   const [searchTerm, setSearchTerm] = useState("");
   const [filterPeriod, setFilterPeriod] = useState("all");
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>(currentView);
   const [showNewConsultation, setShowNewConsultation] = useState(false);
   const [showEditConsultation, setShowEditConsultation] = useState(false);
   const [selectedConsultation, setSelectedConsultation] = useState<Consultation | null>(null);
@@ -86,13 +92,33 @@ const Consultations = () => {
           </p>
         </div>
         
-        <Button 
-          className="gap-2 medical-glow"
-          onClick={() => setShowNewConsultation(true)}
-        >
-          <Plus className="h-4 w-4" />
-          Nouvelle Consultation
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="flex border rounded-lg p-1">
+            <Button
+              variant={viewMode === 'cards' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setViewMode('cards')}
+              className="px-3"
+            >
+              <Grid className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={viewMode === 'table' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setViewMode('table')}
+              className="px-3"
+            >
+              <List className="h-4 w-4" />
+            </Button>
+          </div>
+          <Button 
+            className="gap-2 medical-glow"
+            onClick={() => setShowNewConsultation(true)}
+          >
+            <Plus className="h-4 w-4" />
+            Nouvelle Consultation
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -139,7 +165,7 @@ const Consultations = () => {
               <p className="text-sm">Commencez par créer votre première consultation</p>
             </CardContent>
           </Card>
-        ) : (
+        ) : viewMode === 'cards' ? (
           filteredConsultations.map((consultation) => (
             <Card key={consultation.id} className="card-hover">
               <CardContent className="p-6">
@@ -261,6 +287,75 @@ const Consultations = () => {
               </CardContent>
             </Card>
           ))
+        ) : (
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Animal / Client</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Symptômes</TableHead>
+                    <TableHead>Diagnostic</TableHead>
+                    <TableHead>Température</TableHead>
+                    <TableHead>Coût</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredConsultations.map((consultation) => (
+                    <TableRow key={consultation.id}>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{consultation.petName}</div>
+                          <div className="text-sm text-muted-foreground">{consultation.clientName}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {new Date(consultation.date).toLocaleDateString('fr-FR')}
+                      </TableCell>
+                      <TableCell>
+                        <div className="max-w-xs truncate">
+                          {consultation.symptoms || '-'}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="max-w-xs truncate">
+                          {consultation.diagnosis || '-'}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {consultation.temperature ? `${consultation.temperature}°C` : '-'}
+                      </TableCell>
+                      <TableCell>
+                        {consultation.cost ? `${consultation.cost} ${settings.currency}` : '-'}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <ConsultationPrint consultation={consultation} />
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handleEditConsultation(consultation)}
+                          >
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handleDeleteConsultation(consultation)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         )}
       </div>
       

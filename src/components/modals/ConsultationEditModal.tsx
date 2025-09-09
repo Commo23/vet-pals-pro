@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useClients, Consultation } from "@/contexts/ClientContext";
+import { useSettings } from "@/contexts/SettingsContext";
 
 interface ConsultationEditModalProps {
   open: boolean;
@@ -17,6 +18,7 @@ interface ConsultationEditModalProps {
 export function ConsultationEditModal({ open, onOpenChange, consultation }: ConsultationEditModalProps) {
   const { clients, pets, updateConsultation } = useClients();
   const { toast } = useToast();
+  const { settings } = useSettings();
   
   const [formData, setFormData] = useState({
     clientId: 0,
@@ -282,7 +284,7 @@ export function ConsultationEditModal({ open, onOpenChange, consultation }: Cons
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="cost">Coût (€)</Label>
+              <Label htmlFor="cost">Coût ({settings.currency})</Label>
               <Input
                 id="cost"
                 type="number"

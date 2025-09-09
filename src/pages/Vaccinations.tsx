@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useClients } from '@/contexts/ClientContext';
 import { useSettings } from '@/contexts/SettingsContext';
+import { useDisplayPreference } from '@/hooks/use-display-preference';
 import { 
   Syringe,
   Calendar,
@@ -30,7 +31,8 @@ import {
   PawPrint,
   FileText,
   Eye,
-  Edit
+  Edit,
+  Trash2
 } from 'lucide-react';
 import { format, isWithinInterval, startOfDay, endOfDay, addDays, isSameDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -40,6 +42,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useReactToPrint } from 'react-to-print';
 import CertificateVaccinationPrint from '@/components/CertificateVaccinationPrint';
+
 
 // Protocoles vaccinaux prédéfinis
 const vaccinationProtocols = {
@@ -212,10 +215,10 @@ const VaccinationCalendar: React.FC = () => {
 };
 
 export default function Vaccinations() {
-  const { 
-    vaccinations, 
-    pets, 
-    clients, 
+  const {
+    vaccinations,
+    pets,
+    clients,
     vaccinationProtocols,
     getVaccinationsByPetId,
     getOverdueVaccinations,
@@ -223,20 +226,29 @@ export default function Vaccinations() {
     getVaccinationsByStatus,
     getActiveVaccinationProtocols,
     getVaccinationProtocolsBySpecies,
-    deleteVaccinationProtocol
+    deleteVaccinationProtocol,
+    deleteVaccination,
+    updateVaccination
   } = useClients();
   const { settings } = useSettings();
+  const { currentView } = useDisplayPreference('vaccinations');
   const { toast } = useToast();
   
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>(currentView);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [currentTab, setCurrentTab] = useState('overview');
 
   const [certModalOpen, setCertModalOpen] = useState(false);
   const [certPetId, setCertPetId] = useState<number | null>(null);
   const [certClientId, setCertClientId] = useState<number | null>(null);
+  const [editingVaccinationStatus, setEditingVaccinationStatus] = useState<number | null>(null);
+  const [editingVaccination, setEditingVaccination] = useState<any>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [vaccinationToDelete, setVaccinationToDelete] = useState<any>(null);
   const printRef = useRef<any>(null);
 
   // États pour les boutons de vaccination
@@ -244,10 +256,87 @@ export default function Vaccinations() {
   const [showVaccinationDetails, setShowVaccinationDetails] = useState(false);
   const [showVaccinationDocument, setShowVaccinationDocument] = useState(false);
 
+  // After existing state declarations (e.g., editingVaccinationStatus)
+  const [editingField, setEditingField] = useState<{ id: number; field: 'dateGiven' | 'veterinarian' | 'cost'; } | null>(null);
+  const [fieldValue, setFieldValue] = useState<string>('');
+
+  // Handler to save inline edit
+  const handleFieldSave = () => {
+    if (!editingField) return;
+    const { id, field } = editingField;
+    const vaccination = vaccinations.find(v => v.id === id);
+    if (vaccination) {
+      const updated = { ...vaccination, [field]: fieldValue };
+      updateVaccination(id, updated);
+      toast({ title: 'Modifié', description: `${field} mis à jour`, });
+    }
+    setEditingField(null);
+  };
+
   const handlePrintCert = useReactToPrint({
     contentRef: printRef,
     onAfterPrint: () => setCertModalOpen(false)
   });
+
+  const handleStatusChange = (vaccinationId: number, newStatus: 'completed' | 'scheduled' | 'overdue' | 'missed') => {
+    updateVaccination(vaccinationId, { status: newStatus });
+    setEditingVaccinationStatus(null);
+
+    const statusLabels = {
+      completed: 'Terminée',
+      scheduled: 'Planifiée',
+      overdue: 'En retard',
+      missed: 'Manquée'
+    };
+
+    toast({
+      title: "Statut mis à jour",
+      description: `Le statut de la vaccination a été changé en "${statusLabels[newStatus]}"`,
+    });
+  };
+
+  const handleEditVaccination = (vaccination: any) => {
+    setEditingVaccination(vaccination);
+    setShowEditModal(true);
+  };
+
+  const handleDeleteVaccination = (vaccination: any) => {
+    setVaccinationToDelete(vaccination);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeleteVaccination = () => {
+    if (vaccinationToDelete) {
+      console.log('🗑️ confirmDeleteVaccination - Vaccination à supprimer:', {
+        id: vaccinationToDelete.id,
+        vaccineName: vaccinationToDelete.vaccineName,
+        vaccinationCategory: vaccinationToDelete.vaccinationCategory,
+        originalVaccinationId: vaccinationToDelete.originalVaccinationId
+      });
+      
+      deleteVaccination(vaccinationToDelete.id);
+      const vaccinationType = vaccinationToDelete.vaccinationCategory === 'reminder' ? 'rappel' : 'vaccination';
+      
+      // Compter les rappels liés si c'est une vaccination originale
+      const relatedRemindersCount = vaccinationToDelete.vaccinationCategory === 'new' 
+        ? vaccinations.filter(v => v.originalVaccinationId === vaccinationToDelete.id).length 
+        : 0;
+      
+      toast({
+        title: `${vaccinationType.charAt(0).toUpperCase() + vaccinationType.slice(1)} supprimée`,
+        description: vaccinationToDelete.vaccinationCategory === 'new' && relatedRemindersCount > 0
+          ? `La vaccination ${vaccinationToDelete.vaccineName} et ses ${relatedRemindersCount} rappel(s) ont été supprimés avec succès.`
+          : `Le ${vaccinationType} ${vaccinationToDelete.vaccineName} a été supprimé avec succès.`,
+      });
+      setShowDeleteConfirm(false);
+      setVaccinationToDelete(null);
+    }
+  };
+
+  const handleEditModalClose = () => {
+    setShowEditModal(false);
+    setEditingVaccination(null);
+  };
 
   // Gestionnaires pour les boutons
   const handleShowVaccinationDetails = (vaccination: any) => {
@@ -267,8 +356,10 @@ export default function Vaccinations() {
     const overdue = getOverdueVaccinations().length;
     const upcoming = getUpcomingVaccinations().length;
     const scheduled = getVaccinationsByStatus('scheduled').length;
+    const reminders = vaccinations.filter(v => v.vaccinationCategory === 'reminder').length;
+    const originalVaccinations = vaccinations.filter(v => v.vaccinationCategory === 'new').length;
     
-    return { total, completed, overdue, upcoming, scheduled };
+    return { total, completed, overdue, upcoming, scheduled, reminders, originalVaccinations };
   }, [vaccinations, getVaccinationsByStatus, getOverdueVaccinations, getUpcomingVaccinations]);
 
   // Filtrage des vaccinations
@@ -282,10 +373,11 @@ export default function Vaccinations() {
       
       const matchesStatus = statusFilter === 'all' || vaccination.status === statusFilter;
       const matchesType = typeFilter === 'all' || vaccination.vaccineType === typeFilter;
+      const matchesCategory = categoryFilter === 'all' || vaccination.vaccinationCategory === categoryFilter;
       
-      return matchesSearch && matchesStatus && matchesType;
+      return matchesSearch && matchesStatus && matchesType && matchesCategory;
     });
-  }, [vaccinations, searchTerm, statusFilter, typeFilter]);
+  }, [vaccinations, searchTerm, statusFilter, typeFilter, categoryFilter]);
 
   const exportVaccinationData = () => {
     const dataStr = JSON.stringify(vaccinations, null, 2);
@@ -458,6 +550,19 @@ export default function Vaccinations() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                    <SelectTrigger className="w-[150px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Toutes catégories</SelectItem>
+                      <SelectItem value="new">Vaccinations</SelectItem>
+                      <SelectItem value="reminder">Rappels</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center gap-2">
                   <Button
                     variant={viewMode === 'cards' ? 'default' : 'outline'}
                     size="sm"
@@ -500,30 +605,73 @@ export default function Vaccinations() {
                             <p className="text-xs text-gray-600">{pet?.type} • {client?.name}</p>
                           </div>
                         </div>
-                        <Badge className={getStatusColor(vaccination.status)}>
-                          {getStatusIcon(vaccination.status)}
-                          <span className="ml-1 capitalize">{vaccination.status}</span>
-                        </Badge>
+                        {editingVaccinationStatus === vaccination.id ? (
+                          <div className="flex items-center gap-2">
+                            <Select
+                              value={vaccination.status}
+                              onValueChange={(value: 'completed' | 'scheduled' | 'overdue' | 'missed') => 
+                                handleStatusChange(vaccination.id, value)
+                              }
+                            >
+                              <SelectTrigger className="w-32">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="completed">Terminée</SelectItem>
+                                <SelectItem value="scheduled">Planifiée</SelectItem>
+                                <SelectItem value="overdue">En retard</SelectItem>
+                                <SelectItem value="missed">Manquée</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setEditingVaccinationStatus(null)}
+                            >
+                              Annuler
+                            </Button>
+                          </div>
+                        ) : (
+                          <Badge 
+                            className={`${getStatusColor(vaccination.status)} cursor-pointer hover:opacity-80`}
+                            onClick={() => setEditingVaccinationStatus(vaccination.id)}
+                          >
+                            {getStatusIcon(vaccination.status)}
+                            <span className="ml-1 capitalize">{vaccination.status}</span>
+                          </Badge>
+                        )}
                       </div>
 
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
-                          <Syringe className="h-4 w-4 text-blue-600" />
-                          <span className="font-medium text-sm">{vaccination.vaccineName}</span>
+                          <Syringe className={`h-4 w-4 ${vaccination.vaccinationCategory === 'reminder' ? 'text-orange-600' : 'text-blue-600'}`} />
+                          <span className="font-medium text-sm">
+                            {vaccination.vaccineName}
+                            {vaccination.vaccinationCategory === 'reminder' && (
+                              <span className="ml-2 text-xs text-orange-600 font-normal">(Rappel)</span>
+                            )}
+                          </span>
                           <Badge variant="outline" className="text-xs">
                             {vaccination.vaccineType}
                           </Badge>
+                          {vaccination.vaccinationCategory === 'reminder' && (
+                            <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-800">
+                              Rappel
+                            </Badge>
+                          )}
                         </div>
                         
                         <div className="flex items-center gap-2 text-sm text-gray-600">
                           <Calendar className="h-4 w-4" />
-                          <span>Donné: {format(new Date(vaccination.dateGiven), 'dd/MM/yyyy', { locale: fr })}</span>
+                          <span>Date d'administration: {format(new Date(vaccination.dateGiven), 'dd/MM/yyyy', { locale: fr })}</span>
                         </div>
                         
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
-                          <Clock className="h-4 w-4" />
-                          <span>Rappel: {format(new Date(vaccination.nextDueDate), 'dd/MM/yyyy', { locale: fr })}</span>
-                        </div>
+                        {vaccination.vaccinationCategory === 'new' && (
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Clock className="h-4 w-4" />
+                            <span>Prochain rappel: {format(new Date(vaccination.nextDueDate), 'dd/MM/yyyy', { locale: fr })}</span>
+                          </div>
+                        )}
 
                         <div className="flex items-center gap-2 text-sm text-gray-600">
                           <Users className="h-4 w-4" />
@@ -560,6 +708,21 @@ export default function Vaccinations() {
                         >
                           <FileText className="h-4 w-4" />
                         </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleEditVaccination(vaccination)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleDeleteVaccination(vaccination)}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
@@ -576,7 +739,6 @@ export default function Vaccinations() {
                       <TableHead>Vaccin</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Date donnée</TableHead>
-                      <TableHead>Rappel</TableHead>
                       <TableHead>Statut</TableHead>
                       <TableHead>Vétérinaire</TableHead>
                       <TableHead>Coût</TableHead>
@@ -604,22 +766,117 @@ export default function Vaccinations() {
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell className="font-medium">{vaccination.vaccineName}</TableCell>
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              <span>{vaccination.vaccineName}</span>
+                              {vaccination.vaccinationCategory === 'reminder' && (
+                                <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-800">
+                                  Rappel
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
                           <TableCell>
                             <Badge variant="outline" className="text-xs">
                               {vaccination.vaccineType}
                             </Badge>
                           </TableCell>
-                          <TableCell>{format(new Date(vaccination.dateGiven), 'dd/MM/yyyy')}</TableCell>
-                          <TableCell>{format(new Date(vaccination.nextDueDate), 'dd/MM/yyyy')}</TableCell>
-                          <TableCell>
-                            <Badge className={getStatusColor(vaccination.status)}>
-                              {getStatusIcon(vaccination.status)}
-                              <span className="ml-1 capitalize">{vaccination.status}</span>
-                            </Badge>
+                          <TableCell
+                            className="cursor-pointer"
+                            onClick={() => { setEditingField({ id: vaccination.id, field: 'dateGiven' }); setFieldValue(vaccination.dateGiven); }}
+                          >
+                            {editingField?.id === vaccination.id && editingField.field === 'dateGiven' ? (
+                              <Input
+                                type="date"
+                                value={fieldValue}
+                                onChange={e => setFieldValue(e.target.value)}
+                                onBlur={handleFieldSave}
+                                autoFocus
+                              />
+                            ) : (
+                              format(new Date(vaccination.dateGiven), 'dd/MM/yyyy')
+                            )}
                           </TableCell>
-                          <TableCell>{vaccination.veterinarian}</TableCell>
-                          <TableCell>{vaccination.cost} {settings.currency}</TableCell>
+                          <TableCell>
+                            {editingVaccinationStatus === vaccination.id ? (
+                              <div className="flex items-center gap-2">
+                                <Select
+                                  value={vaccination.status}
+                                  onValueChange={(value: 'completed' | 'scheduled' | 'overdue' | 'missed') => 
+                                    handleStatusChange(vaccination.id, value)
+                                  }
+                                >
+                                  <SelectTrigger className="w-32">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="completed">Terminée</SelectItem>
+                                    <SelectItem value="scheduled">Planifiée</SelectItem>
+                                    <SelectItem value="overdue">En retard</SelectItem>
+                                    <SelectItem value="missed">Manquée</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setEditingVaccinationStatus(null)}
+                                >
+                                  Annuler
+                                </Button>
+                              </div>
+                            ) : (
+                              <Badge 
+                                className={`${getStatusColor(vaccination.status)} cursor-pointer hover:opacity-80`}
+                                onClick={() => setEditingVaccinationStatus(vaccination.id)}
+                              >
+                                {getStatusIcon(vaccination.status)}
+                                <span className="ml-1 capitalize">{vaccination.status}</span>
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell
+                            className="cursor-pointer"
+                            onClick={() => { setEditingField({ id: vaccination.id, field: 'veterinarian' }); setFieldValue(vaccination.veterinarian); }}
+                          >
+                            {editingField?.id === vaccination.id && editingField.field === 'veterinarian' ? (
+                              <Select
+                                value={fieldValue}
+                                onValueChange={value => {
+                                  setFieldValue(value);
+                                  setEditingField(null); // close editor
+                                  const updated = { ...vaccinations.find(v => v.id === vaccination.id), veterinarian: value };
+                                  updateVaccination(vaccination.id, updated as any);
+                                }}
+                              >
+                                <SelectTrigger className="w-32">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  { settings.veterinarians.filter(v => v.isActive).map(vet => (
+                                    <SelectItem key={vet.id} value={vet.name}>{vet.name}</SelectItem>
+                                  )) }
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              vaccination.veterinarian
+                            )}
+                          </TableCell>
+                          <TableCell
+                            className="cursor-pointer"
+                            onClick={() => { setEditingField({ id: vaccination.id, field: 'cost' }); setFieldValue(String(vaccination.cost || '')); }}
+                          >
+                            {editingField?.id === vaccination.id && editingField.field === 'cost' ? (
+                              <Input
+                                type="number"
+                                value={fieldValue}
+                                onChange={e => setFieldValue(e.target.value)}
+                                onBlur={() => { handleFieldSave(); }}
+                                autoFocus
+                              />
+                            ) : (
+                              <> {vaccination.cost} {settings.currency} </>
+                            )}
+                          </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
                               <Button 
@@ -641,6 +898,21 @@ export default function Vaccinations() {
                                 }}
                               >
                                 <FileText className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => handleEditVaccination(vaccination)}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => handleDeleteVaccination(vaccination)}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              >
+                                <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>
                           </TableCell>
@@ -741,6 +1013,17 @@ export default function Vaccinations() {
                 <SelectItem value="non-core">Optionnels</SelectItem>
                 <SelectItem value="rabies">Rage</SelectItem>
                 <SelectItem value="custom">Personnalisés</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Toutes catégories</SelectItem>
+                <SelectItem value="new">Vaccinations</SelectItem>
+                <SelectItem value="reminder">Rappels</SelectItem>
               </SelectContent>
             </Select>
 
@@ -1031,6 +1314,52 @@ export default function Vaccinations() {
                 </Button>
                 <Button onClick={handlePrintCert}>
                   Générer PDF
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modale d'édition de vaccination */}
+      <NewVaccinationModal
+        open={showEditModal}
+        onOpenChange={handleEditModalClose}
+        editingVaccination={editingVaccination}
+      />
+
+      {/* Modale de confirmation de suppression */}
+      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirmer la suppression</DialogTitle>
+          </DialogHeader>
+          {vaccinationToDelete && (
+            <div className="space-y-4">
+              <p className="text-muted-foreground">
+                Êtes-vous sûr de vouloir supprimer {vaccinationToDelete.vaccinationCategory === 'reminder' ? 'le rappel' : 'la vaccination'} <strong>{vaccinationToDelete.vaccineName}</strong> pour <strong>{vaccinationToDelete.petName}</strong> ?
+              </p>
+              <p className="text-sm text-red-600">
+                Cette action est irréversible et supprimera également l'entrée du dossier médical.
+                {vaccinationToDelete.vaccinationCategory === 'reminder' ? (
+                  <span className="block mt-1">
+                    <strong>Note :</strong> Seul ce rappel sera supprimé, les autres rappels de la même vaccination ne seront pas affectés.
+                  </span>
+                ) : (
+                  <span className="block mt-1">
+                    <strong>Attention :</strong> La suppression de cette vaccination supprimera également tous ses rappels associés.
+                  </span>
+                )}
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>
+                  Annuler
+                </Button>
+                <Button 
+                  variant="destructive" 
+                  onClick={confirmDeleteVaccination}
+                >
+                  Supprimer
                 </Button>
               </div>
             </div>

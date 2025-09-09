@@ -17,13 +17,18 @@ interface NewAntiparasiticModalProps {
   children?: React.ReactNode;
   selectedPetId?: number;
   selectedClientId?: number;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  editingAntiparasitic?: any;
 }
 
-export default function NewAntiparasiticModal({ children, selectedClientId, selectedPetId }: NewAntiparasiticModalProps) {
-  const { clients, pets, addAntiparasitic, getAntiparasiticProtocolsBySpecies, addAppointment } = useClients();
+export default function NewAntiparasiticModal({ children, selectedClientId, selectedPetId, open, onOpenChange, editingAntiparasitic }: NewAntiparasiticModalProps) {
+  const { clients, pets, addAntiparasitic, updateAntiparasitic, getAntiparasiticProtocolsBySpecies, addAppointment } = useClients();
   const { settings } = useSettings();
   const { toast } = useToast();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const modalOpen = open !== undefined ? open : internalOpen;
+  const setModalOpen = onOpenChange || setInternalOpen;
 
   const [formData, setFormData] = useState({
     clientId: selectedClientId?.toString() || '',
@@ -50,6 +55,27 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
     if (selectedClientId) setFormData(prev => ({ ...prev, clientId: selectedClientId.toString(), petId: '' }));
     if (selectedPetId) setFormData(prev => ({ ...prev, petId: selectedPetId.toString() }));
   }, [selectedClientId, selectedPetId]);
+
+  // Pré-remplir le formulaire pour l'édition
+  useEffect(() => {
+    if (editingAntiparasitic) {
+      setFormData({
+        clientId: editingAntiparasitic.clientId.toString(),
+        petId: editingAntiparasitic.petId.toString(),
+        dateGiven: editingAntiparasitic.dateGiven,
+        nextDueDate: editingAntiparasitic.nextDueDate || '',
+        dosage: editingAntiparasitic.dosage || '',
+        administrationRoute: editingAntiparasitic.administrationRoute || '',
+        veterinarian: editingAntiparasitic.veterinarian || '',
+        notes: editingAntiparasitic.notes || '',
+        batchNumber: editingAntiparasitic.batchNumber || '',
+        manufacturer: editingAntiparasitic.manufacturer || '',
+        weight: editingAntiparasitic.weight || '',
+        cost: editingAntiparasitic.cost || '',
+        sideEffects: editingAntiparasitic.sideEffects || ''
+      });
+    }
+  }, [editingAntiparasitic]);
 
   // Initialize defaults for each protocol interval
   useEffect(() => {
@@ -89,11 +115,47 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
       return;
     }
 
+    // Mode édition
+    if (editingAntiparasitic) {
+      updateAntiparasitic(editingAntiparasitic.id, {
+        clientId: parseInt(formData.clientId),
+        clientName: client.name,
+        petId: parseInt(formData.petId),
+        petName: pet.name,
+        productName: editingAntiparasitic.productName,
+        productType: editingAntiparasitic.productType,
+        targetParasites: editingAntiparasitic.targetParasites,
+        dateGiven: formData.dateGiven,
+        nextDueDate: formData.nextDueDate,
+        dosage: formData.dosage,
+        administrationRoute: formData.administrationRoute as any,
+        veterinarian: formData.veterinarian,
+        notes: formData.notes,
+        batchNumber: formData.batchNumber,
+        manufacturer: formData.manufacturer,
+        weight: formData.weight,
+        status: editingAntiparasitic.status,
+        cost: formData.cost,
+        sideEffects: formData.sideEffects
+      });
+      
+      toast({
+        title: 'Traitement modifié',
+        description: `Le traitement ${editingAntiparasitic.productName} a été mis à jour avec succès.`
+      });
+      
+      setModalOpen(false);
+      return;
+    }
+
     if (safeSelectedProtocols.length > 0) {
       // Traiter chaque protocole sélectionné
       safeSelectedProtocols.forEach(protocol => {
         protocol.intervals.forEach(interval => {
           const key = `${protocol.id}-${interval.offsetDays}`;
+          // Assign dateGiven per interval: original uses form date, reminders use their due date
+          const dueDate = nextDueDates[key] || '';
+          const entryDate = interval.offsetDays === 0 ? formData.dateGiven : dueDate;
           addAntiparasitic({
             clientId: client.id,
             clientName: client.name,
@@ -102,8 +164,8 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
             productName: `${protocol.name} (${interval.label})`, 
             productType: protocol.productType,
             targetParasites: protocol.targetParasites,
-            dateGiven: formData.dateGiven,
-            nextDueDate: nextDueDates[key] || '',
+            dateGiven: entryDate,
+            nextDueDate: dueDate,
             dosage: formData.dosage,
             administrationRoute: formData.administrationRoute || protocol.productType as any,
             veterinarian: formData.veterinarian,
@@ -198,38 +260,52 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
     // Reset and close
     setSelectedProtocols([]);
     setFormData({ 
-      clientId: selectedClientId?.toString() || '', 
-      petId: selectedPetId?.toString() || '', 
-      dateGiven: format(new Date(), 'yyyy-MM-dd'), 
-      nextDueDate: '', 
-      dosage: '', 
-      administrationRoute: '', 
-      veterinarian: '', 
-      notes: '', 
-      batchNumber: '', 
-      manufacturer: '', 
-      weight: '', 
-      cost: '', 
-      sideEffects: '' 
+      clientId: selectedClientId?.toString() || '',
+      petId: selectedPetId?.toString() || '',
+      dateGiven: format(new Date(), 'yyyy-MM-dd'),
+      nextDueDate: '',
+      dosage: '',
+      administrationRoute: '',
+      veterinarian: '',
+      notes: '',
+      batchNumber: '',
+      manufacturer: '',
+      weight: '',
+      cost: '',
+      sideEffects: ''
     });
-    setOpen(false);
+    setModalOpen(false);
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {children || <Button className="gap-2"><Plus className="h-4 w-4" />Nouveau traitement</Button>}
-      </DialogTrigger>
+    <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+      {!editingAntiparasitic && (
+        <DialogTrigger asChild>
+          {children || <Button className="gap-2"><Plus className="h-4 w-4" />Nouveau traitement</Button>}
+        </DialogTrigger>
+      )}
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Nouveau traitement antiparasitaire</DialogTitle>
+          <DialogTitle>
+            {editingAntiparasitic ? `Modifier ${editingAntiparasitic.productName}` : 'Nouveau traitement antiparasitaire'}
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Client & Pet Select */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {editingAntiparasitic && (
+              <div className="col-span-2 text-sm text-blue-600 bg-blue-50 p-2 rounded-md border border-blue-200">
+                <strong>Mode édition :</strong> Vous modifiez uniquement ce traitement spécifique. 
+                Le client et l'animal sont verrouillés. Les protocoles ne sont pas affichés car ils ne s'appliquent qu'à la création.
+              </div>
+            )}
             <div>
               <Label>Client *</Label>
-              <Select value={formData.clientId} onValueChange={v => setFormData(prev => ({ ...prev, clientId: v, petId: '' }))}>
+              <Select 
+                value={formData.clientId} 
+                onValueChange={v => setFormData(prev => ({ ...prev, clientId: v, petId: '' }))}
+                disabled={editingAntiparasitic}
+              >
                 <SelectTrigger><SelectValue placeholder="Sélectionner un client" /></SelectTrigger>
                 <SelectContent>
                   {clients && Array.isArray(clients) && clients.length > 0 ? (
@@ -244,7 +320,11 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
             </div>
             <div>
               <Label>Animal *</Label>
-              <Select value={formData.petId} onValueChange={v => setFormData(prev => ({ ...prev, petId: v }))} disabled={!formData.clientId}>
+              <Select 
+                value={formData.petId} 
+                onValueChange={v => setFormData(prev => ({ ...prev, petId: v }))} 
+                disabled={!formData.clientId || editingAntiparasitic}
+              >
                 <SelectTrigger><SelectValue placeholder="Sélectionner un animal" /></SelectTrigger>
                 <SelectContent>
                   {pets.filter(p => p.ownerId === parseInt(formData.clientId)).map(p => <SelectItem key={p.id} value={p.id.toString()}>{p.name} ({p.type})</SelectItem>)}
@@ -253,7 +333,7 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
             </div>
           </div>
           {/* Protocol Selection */}
-          {availableProtocols.length > 0 && (
+          {availableProtocols.length > 0 && !editingAntiparasitic && (
             <div className="space-y-2">
               <Label>Protocoles suggérés ({pets.find(p => p.id===parseInt(formData.petId))?.type})</Label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -340,14 +420,13 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
               <Select value={formData.veterinarian} onValueChange={v=>setFormData(prev=>({...prev,veterinarian:v}))}>
                 <SelectTrigger><SelectValue placeholder="Sélectionner un vétérinaire" /></SelectTrigger>
                 <SelectContent>
-                  {(() => {
-                    const vets = JSON.parse(localStorage.getItem('vetpro-veterinarians') || '[]');
-                    return vets.map(vet => (
+                  {(settings.veterinarians || [])
+                    .filter(vet => vet.isActive)
+                    .map(vet => (
                       <SelectItem key={vet.id} value={vet.name}>
                         {vet.name}
                       </SelectItem>
-                    ));
-                  })()}
+                    ))}
                 </SelectContent>
               </Select>
             </div>
@@ -377,7 +456,7 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
             <Input value={formData.sideEffects} onChange={e=>setFormData(prev=>({...prev,sideEffects:e.target.value}))} placeholder="Effets indésirables" />
           </div>
           <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" type="button" onClick={()=>setOpen(false)}>Annuler</Button>
+            <Button variant="outline" type="button" onClick={()=>onOpenChange ? onOpenChange(false) : setInternalOpen(false)}>Annuler</Button>
             <Button type="submit">Ajouter</Button>
           </div>
         </form>
