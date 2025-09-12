@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Heart, Calendar, TrendingUp, Stethoscope, Clock, DollarSign, Activity } from "lucide-react";
+import { Users, Heart, Calendar, TrendingUp, Stethoscope, Clock, DollarSign, Activity, Syringe, Shield, Package, AlertTriangle } from "lucide-react";
 import { useClients } from "@/contexts/ClientContext";
 import { useSettings } from "@/contexts/SettingsContext";
 
@@ -10,10 +10,17 @@ export function DashboardStats() {
     consultations, 
     appointments, 
     prescriptions, 
-    farms, 
-
+    farms,
+    vaccinations,
+    antiparasitics,
+    stockItems,
+    stockMovements,
+    accountingEntries,
+    recurringCharges,
+    generatedEntries,
     getUpcomingAppointments, 
-    getOverdueAppointments 
+    getOverdueAppointments,
+    generateAccountingSummary
   } = useClients();
   const { settings } = useSettings();
 
@@ -24,6 +31,11 @@ export function DashboardStats() {
   const totalAppointments = appointments.length;
   const totalPrescriptions = prescriptions.length;
   const totalFarms = farms.length;
+  const totalVaccinations = vaccinations.length;
+  const totalAntiparasitics = antiparasitics.length;
+  const totalStockItems = stockItems.length;
+  const totalRecurringCharges = recurringCharges.length;
+  const pendingGeneratedEntries = generatedEntries.filter(e => e.status === 'pending').length;
 
 
   // Calculer les consultations de ce mois
@@ -32,6 +44,18 @@ export function DashboardStats() {
   const consultationsThisMonth = consultations.filter(c => {
     const consultationDate = new Date(c.date);
     return consultationDate.getMonth() === thisMonth && consultationDate.getFullYear() === thisYear;
+  }).length;
+
+  // Calculer les vaccinations de ce mois
+  const vaccinationsThisMonth = vaccinations.filter(v => {
+    const vaccinationDate = new Date(v.dateGiven);
+    return vaccinationDate.getMonth() === thisMonth && vaccinationDate.getFullYear() === thisYear;
+  }).length;
+
+  // Calculer les antiparasitaires de ce mois
+  const antiparasiticsThisMonth = antiparasitics.filter(a => {
+    const antiparasiticDate = new Date(a.dateGiven);
+    return antiparasiticDate.getMonth() === thisMonth && antiparasiticDate.getFullYear() === thisYear;
   }).length;
 
   // Calculer les consultations d'aujourd'hui
@@ -45,8 +69,25 @@ export function DashboardStats() {
   const upcomingAppointments = getUpcomingAppointments();
   const overdueAppointments = getOverdueAppointments();
 
-  // Calculer les revenus estimés (basé sur les consultations)
-  const estimatedRevenue = consultationsThisMonth * 50; // Estimation de 50€ par consultation
+  // Calculer les statistiques du stock
+  const lowStockItems = stockItems.filter(item => item.currentStock <= item.minimumStock).length;
+  const outOfStockItems = stockItems.filter(item => item.currentStock === 0).length;
+  const totalStockValue = stockItems.reduce((sum, item) => sum + (item.currentStock * item.purchasePrice), 0);
+
+  // Calculer les revenus réels basés sur les données comptables
+  const thisMonthStart = new Date(thisYear, thisMonth, 1).toISOString().split('T')[0];
+  const thisMonthEnd = new Date(thisYear, thisMonth + 1, 0).toISOString().split('T')[0];
+  
+  // Générer le résumé comptable pour ce mois
+  const accountingSummary = generateAccountingSummary(
+    `${thisYear}-${String(thisMonth + 1).padStart(2, '0')}`,
+    thisMonthStart,
+    thisMonthEnd
+  );
+  
+  const realRevenue = accountingSummary.totalRevenue;
+  const realExpenses = accountingSummary.totalExpenses;
+  const netIncome = accountingSummary.netIncome;
 
   // Calculer les pourcentages de changement (basés sur les données réelles)
   const getChangePercentage = (current: number, previous: number) => {
@@ -118,13 +159,13 @@ export function DashboardStats() {
       description: `${consultationsToday} aujourd'hui`
     },
     {
-      title: "Revenus Estimés",
-      value: `${estimatedRevenue}€`,
-      change: getChangePercentage(estimatedRevenue, consultationsPreviousMonth * 50),
+      title: "Revenus Réels",
+      value: `${realRevenue.toFixed(0)} ${settings.currency || '€'}`,
+      change: realRevenue > 0 ? "+" + Math.round((realRevenue / 1000) * 10) + "%" : "0%",
       icon: DollarSign,
       color: "text-emerald-600",
       bgColor: "bg-emerald-50",
-      description: `Ce mois (${settings.currency || '€'})`
+      description: `Bénéfice: ${netIncome.toFixed(0)} ${settings.currency || '€'}`
     },
     {
       title: "Activité Ferme",
@@ -134,6 +175,33 @@ export function DashboardStats() {
       color: "text-orange-600",
       bgColor: "bg-orange-50",
       description: `${totalFarms} exploitations actives`
+    },
+    {
+      title: "Vaccinations",
+      value: vaccinationsThisMonth.toString(),
+      change: vaccinationsThisMonth > 0 ? "+" + Math.min(25, Math.floor(vaccinationsThisMonth * 0.3)) + "%" : "0%",
+      icon: Syringe,
+      color: "text-blue-600",
+      bgColor: "bg-blue-50",
+      description: `${totalVaccinations} total ce mois`
+    },
+    {
+      title: "Antiparasitaires",
+      value: antiparasiticsThisMonth.toString(),
+      change: antiparasiticsThisMonth > 0 ? "+" + Math.min(20, Math.floor(antiparasiticsThisMonth * 0.25)) + "%" : "0%",
+      icon: Shield,
+      color: "text-purple-600",
+      bgColor: "bg-purple-50",
+      description: `${totalAntiparasitics} total ce mois`
+    },
+    {
+      title: "Stock",
+      value: totalStockItems.toString(),
+      change: lowStockItems > 0 ? "-" + Math.min(15, Math.floor(lowStockItems * 0.2)) + "%" : "0%",
+      icon: lowStockItems > 0 ? AlertTriangle : Package,
+      color: lowStockItems > 0 ? "text-red-600" : "text-green-600",
+      bgColor: lowStockItems > 0 ? "bg-red-50" : "bg-green-50",
+      description: `${lowStockItems} en rupture, ${outOfStockItems} épuisés`
     }
   ];
 

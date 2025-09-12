@@ -28,6 +28,7 @@ import {
   Shield,
   Heart,
   Users,
+  Package,
   PawPrint,
   FileText,
   Eye,
@@ -215,10 +216,10 @@ const VaccinationCalendar: React.FC = () => {
 };
 
 export default function Vaccinations() {
-  const {
-    vaccinations,
-    pets,
-    clients,
+  const { 
+    vaccinations, 
+    pets, 
+    clients, 
     vaccinationProtocols,
     getVaccinationsByPetId,
     getOverdueVaccinations,
@@ -636,9 +637,9 @@ export default function Vaccinations() {
                             className={`${getStatusColor(vaccination.status)} cursor-pointer hover:opacity-80`}
                             onClick={() => setEditingVaccinationStatus(vaccination.id)}
                           >
-                            {getStatusIcon(vaccination.status)}
-                            <span className="ml-1 capitalize">{vaccination.status}</span>
-                          </Badge>
+                          {getStatusIcon(vaccination.status)}
+                          <span className="ml-1 capitalize">{vaccination.status}</span>
+                        </Badge>
                         )}
                       </div>
 
@@ -667,10 +668,10 @@ export default function Vaccinations() {
                         </div>
                         
                         {vaccination.vaccinationCategory === 'new' && (
-                          <div className="flex items-center gap-2 text-sm text-gray-600">
-                            <Clock className="h-4 w-4" />
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <Clock className="h-4 w-4" />
                             <span>Prochain rappel: {format(new Date(vaccination.nextDueDate), 'dd/MM/yyyy', { locale: fr })}</span>
-                          </div>
+                        </div>
                         )}
 
                         <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -683,6 +684,43 @@ export default function Vaccinations() {
                             <span className="font-medium">{vaccination.cost} {settings.currency}</span>
                           </div>
                         )}
+
+                        {/* Statut du stock */}
+                        <div className="flex items-center gap-2 text-sm">
+                          {(() => {
+                            if (vaccination.isInStock === true) {
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <Package className="h-4 w-4 text-green-600" />
+                                  <Badge variant="default" className="bg-green-100 text-green-800 text-xs">
+                                    En stock
+                                  </Badge>
+                                  {vaccination.stockQuantity && (
+                                    <span className="text-xs text-muted-foreground">
+                                      ({vaccination.stockQuantity})
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            } else if (vaccination.isInStock === false) {
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <Package className="h-4 w-4 text-gray-400" />
+                                  <Badge variant="secondary" className="text-xs">
+                                    Non en stock
+                                  </Badge>
+                                </div>
+                              );
+                            } else {
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <Package className="h-4 w-4 text-gray-400" />
+                                  <span className="text-xs text-muted-foreground">N/A</span>
+                                </div>
+                              );
+                            }
+                          })()}
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-2 mt-4 pt-3 border-t">
@@ -740,6 +778,7 @@ export default function Vaccinations() {
                       <TableHead>Type</TableHead>
                       <TableHead>Date donnée</TableHead>
                       <TableHead>Statut</TableHead>
+                      <TableHead>Stock</TableHead>
                       <TableHead>Vétérinaire</TableHead>
                       <TableHead>Coût</TableHead>
                       <TableHead>Actions</TableHead>
@@ -829,10 +868,45 @@ export default function Vaccinations() {
                                 className={`${getStatusColor(vaccination.status)} cursor-pointer hover:opacity-80`}
                                 onClick={() => setEditingVaccinationStatus(vaccination.id)}
                               >
-                                {getStatusIcon(vaccination.status)}
-                                <span className="ml-1 capitalize">{vaccination.status}</span>
-                              </Badge>
+                              {getStatusIcon(vaccination.status)}
+                              <span className="ml-1 capitalize">{vaccination.status}</span>
+                            </Badge>
                             )}
+                          </TableCell>
+                          <TableCell>
+                            {(() => {
+                              if (vaccination.isInStock === true) {
+                                return (
+                                  <div className="flex items-center gap-2">
+                                    <Package className="h-4 w-4 text-green-600" />
+                                    <Badge variant="default" className="bg-green-100 text-green-800 text-xs">
+                                      En stock
+                                    </Badge>
+                                    {vaccination.stockQuantity && (
+                                      <span className="text-xs text-muted-foreground">
+                                        ({vaccination.stockQuantity})
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              } else if (vaccination.isInStock === false) {
+                                return (
+                                  <div className="flex items-center gap-2">
+                                    <Package className="h-4 w-4 text-gray-400" />
+                                    <Badge variant="secondary" className="text-xs">
+                                      Non en stock
+                                    </Badge>
+                                  </div>
+                                );
+                              } else {
+                                return (
+                                  <div className="flex items-center gap-2">
+                                    <Package className="h-4 w-4 text-gray-400" />
+                                    <span className="text-xs text-muted-foreground">N/A</span>
+                                  </div>
+                                );
+                              }
+                            })()}
                           </TableCell>
                           <TableCell
                             className="cursor-pointer"

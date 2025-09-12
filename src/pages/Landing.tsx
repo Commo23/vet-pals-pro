@@ -168,7 +168,7 @@ export default function Landing() {
       {/* Footer */}
       <footer className="border-t py-8">
         <div className="container mx-auto px-6 text-center text-muted-foreground">
-          <p>&copy; 2024 VetPro. Tous droits réservés.</p>
+          <p>&copy; {new Date().getFullYear()} VetPro. Tous droits réservés.</p>
         </div>
       </footer>
     </div>

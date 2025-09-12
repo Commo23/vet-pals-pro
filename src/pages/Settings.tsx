@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Plus, Edit, Trash2 } from "lucide-react";
 import { useClients } from "@/contexts/ClientContext";
 import { useSettings, FarmManagementSettings, ClinicSettings, DisplayPreferences } from '@/contexts/SettingsContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -80,12 +81,14 @@ const DEFAULT_SETTINGS: ClinicSettings = {
     ],
     defaultSurfaceUnit: 'hectares',
     defaultCoordinateFormat: 'decimal'
-  }
+  },
+  defaultConsultationPrice: 150
 };
 
 export default function Settings() {
   const { toast } = useToast();
   const { settings, updateSettings } = useSettings();
+  const { theme, setTheme } = useTheme();
   // Veterinarians state initialisé avec defaults
   const DEFAULT_VETS: Veterinarian[] = [
     { id: 1, name: 'Dr. Jean Dupont', title: 'Dr.', specialty: 'Médecine générale', phone: '+212 5 37 00 00 01', email: 'j.dupont@cliniquedusoleil.ma' },
@@ -140,7 +143,7 @@ export default function Settings() {
   }, [pets]);
 
   // Handlers for clinic settings via context
-  const handleSettingsChange = (field: keyof ClinicSettings, value: string | boolean) => {
+  const handleSettingsChange = (field: keyof ClinicSettings, value: string | boolean | number) => {
     updateSettings({ ...settings, [field]: value } as ClinicSettings);
   };
   const saveSettings = () => {
@@ -365,6 +368,7 @@ export default function Settings() {
             <div><Label htmlFor="email">Email</Label><Input id="email" type="email" value={settings.email} onChange={e => handleSettingsChange('email', e.target.value)} /></div>
             <div><Label htmlFor="website">Site web</Label><Input id="website" value={settings.website} onChange={e => handleSettingsChange('website', e.target.value)} /></div>
             <div><Label htmlFor="currency">Devise</Label><Input id="currency" value={settings.currency} onChange={e => handleSettingsChange('currency', e.target.value)} /></div>
+            <div><Label htmlFor="defaultConsultationPrice">Prix de consultation par défaut ({settings.currency})</Label><Input id="defaultConsultationPrice" type="number" step="0.01" min="0" value={settings.defaultConsultationPrice} onChange={e => handleSettingsChange('defaultConsultationPrice', parseFloat(e.target.value) || 0)} /></div>
             <div><Label htmlFor="species">Liste des espèces (virgule séparées)</Label><Input id="species" value={settings.species} onChange={e => handleSettingsChange('species', e.target.value)} /></div>
             <div><Label htmlFor="footerText">Texte de pied de page</Label><Input id="footerText" value={settings.footerText} onChange={e => handleSettingsChange('footerText', e.target.value)} /></div>
             {/* Options d'affichage sur le certificat */}
@@ -450,6 +454,46 @@ export default function Settings() {
             }}>
               Restaurer paramètres ferme
             </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Section du thème */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Thème de l'application</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Choisissez le thème de l'application pour votre confort visuel.
+            </p>
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label htmlFor="theme-select">Thème</Label>
+                <p className="text-sm text-muted-foreground">
+                  {theme === 'light' ? 'Mode clair' : 'Mode sombre'}
+                </p>
+              </div>
+              <Select
+                value={theme}
+                onValueChange={(value: 'light' | 'dark') => {
+                  setTheme(value);
+                  toast({
+                    title: 'Thème mis à jour',
+                    description: `Thème changé en mode ${value === 'light' ? 'clair' : 'sombre'}`,
+                  });
+                }}
+              >
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="light">Mode clair</SelectItem>
+                  <SelectItem value="dark">Mode sombre</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardContent>
       </Card>

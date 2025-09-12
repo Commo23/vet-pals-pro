@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { format } from 'date-fns';
 
 export interface Client {
   id: number;
@@ -119,6 +120,11 @@ export interface PrescriptionMedication {
   unit: string;
   refills?: number;
   cost?: number;
+  // Informations de stock
+  stockItemId?: number; // ID de l'item en stock si disponible
+  isInStock?: boolean; // Si le médicament est disponible en stock
+  stockQuantity?: number; // Quantité disponible en stock
+  stockDeducted?: boolean; // Si la quantité a été déduite du stock
 }
 
 export interface FarmAnimalDetail {
@@ -214,6 +220,11 @@ export interface Vaccination {
   reminderAppointmentId?: number; // ID du rendez-vous de rappel
   isReminder?: boolean; // Indique si c'est un rappel
   reminderHistory?: VaccinationReminder[]; // Historique des rappels
+  // Informations de stock
+  stockItemId?: number; // ID de l'item en stock si disponible
+  isInStock?: boolean; // Si le vaccin est disponible en stock
+  stockQuantity?: number; // Quantité disponible en stock
+  stockDeducted?: boolean; // Si la quantité a été déduite du stock
 }
 
 export interface VaccinationReminder {
@@ -263,6 +274,11 @@ export interface Antiparasitic {
   cost?: string;
   sideEffects?: string;
   createdAt: string;
+  // Informations de stock
+  stockItemId?: number; // ID de l'item en stock si disponible
+  isInStock?: boolean; // Si l'antiparasitaire est disponible en stock
+  stockQuantity?: number; // Quantité disponible en stock
+  stockDeducted?: boolean; // Si la quantité a été déduite du stock
 }
 
 export interface AntiparasiticProtocol {
@@ -299,6 +315,9 @@ interface ClientContextType {
   stockItems: StockItem[];
   stockAlerts: StockAlert[];
   stockMovements: StockMovement[];
+  accountingEntries: AccountingEntry[];
+  recurringCharges: RecurringCharge[];
+  generatedEntries: GeneratedEntry[];
   addClient: (clientData: Omit<Client, 'id' | 'pets' | 'lastVisit' | 'totalVisits'>) => void;
   addPet: (petData: Omit<Pet, 'id'>) => void;
   addConsultation: (consultationData: Omit<Consultation, 'id' | 'createdAt'>) => void;
@@ -313,6 +332,20 @@ interface ClientContextType {
   addAntiparasiticProtocol: (protocolData: Omit<AntiparasiticProtocol, 'id' | 'createdAt' | 'updatedAt'>) => void;
   addStockItem: (itemData: Omit<StockItem, 'id' | 'lastUpdated' | 'totalValue'>) => StockItem;
   addStockMovement: (movementData: Omit<StockMovement, 'id'>) => StockMovement;
+  addAccountingEntry: (entryData: Omit<AccountingEntry, 'id' | 'createdAt'>) => AccountingEntry;
+  updateAccountingEntry: (id: number, updates: Partial<AccountingEntry>) => void;
+  deleteAccountingEntry: (id: number) => void;
+  calculateAutomaticRevenue: (startDate: string, endDate: string) => { totalRevenue: number; revenueBreakdown: any };
+  calculateAutomaticExpenses: (startDate: string, endDate: string) => { totalExpenses: number; expenseBreakdown: any };
+  generateAccountingSummary: (period: string, startDate: string, endDate: string) => AccountingSummary;
+  addRecurringCharge: (chargeData: Omit<RecurringCharge, 'id' | 'createdAt' | 'lastGenerated'>) => RecurringCharge;
+  updateRecurringCharge: (id: number, updates: Partial<RecurringCharge>) => void;
+  deleteRecurringCharge: (id: number) => void;
+  generateRecurringEntries: (startDate: string, endDate: string) => GeneratedEntry[];
+  confirmGeneratedEntry: (generatedEntryId: number, modifiedAmount?: number) => void;
+  cancelGeneratedEntry: (generatedEntryId: number) => void;
+  resetRecurringChargesToDefault: () => void;
+  updateGeneratedEntryPaymentStatus: (id: number, status: 'paid' | 'unpaid' | 'pending') => void;
   updateClient: (id: number, clientData: Partial<Client>) => void;
   updatePet: (id: number, petData: Partial<Pet>) => void;
   updateConsultation: (id: number, consultationData: Partial<Consultation>) => void;
@@ -1035,6 +1068,7 @@ const initialVaccinations: Vaccination[] = [
     clientName: "Marie Dubois",
     vaccineName: "DHPP",
     vaccineType: "core",
+    vaccinationCategory: "new",
     dateGiven: "2024-01-15",
     nextDueDate: "2025-01-15",
     batchNumber: "VAC2024-001",
@@ -1045,7 +1079,10 @@ const initialVaccinations: Vaccination[] = [
     location: "left_shoulder",
     manufacturer: "Zoetis",
     expirationDate: "2025-12-31",
-    createdAt: "2024-01-15T10:30:00Z"
+    createdAt: "2024-01-15T10:30:00Z",
+    isInStock: false,
+    stockQuantity: 0,
+    stockDeducted: false
   },
   {
     id: 2,
@@ -1055,6 +1092,7 @@ const initialVaccinations: Vaccination[] = [
     clientName: "Marie Dubois",
     vaccineName: "Rage",
     vaccineType: "rabies",
+    vaccinationCategory: "new",
     dateGiven: "2024-01-15",
     nextDueDate: "2027-01-15",
     batchNumber: "RAB2024-005",
@@ -1065,7 +1103,10 @@ const initialVaccinations: Vaccination[] = [
     location: "right_shoulder",
     manufacturer: "Merial",
     expirationDate: "2026-08-15",
-    createdAt: "2024-01-15T10:45:00Z"
+    createdAt: "2024-01-15T10:45:00Z",
+    isInStock: false,
+    stockQuantity: 0,
+    stockDeducted: false
   },
   {
     id: 3,
@@ -1075,6 +1116,7 @@ const initialVaccinations: Vaccination[] = [
     clientName: "Jean Martin",
     vaccineName: "FVRCP",
     vaccineType: "core",
+    vaccinationCategory: "new",
     dateGiven: "2023-08-22",
     nextDueDate: "2024-08-22",
     batchNumber: "CAT2023-012",
@@ -1085,7 +1127,10 @@ const initialVaccinations: Vaccination[] = [
     location: "subcutaneous",
     manufacturer: "Virbac",
     expirationDate: "2025-06-30",
-    createdAt: "2023-08-22T14:20:00Z"
+    createdAt: "2023-08-22T14:20:00Z",
+    isInStock: false,
+    stockQuantity: 0,
+    stockDeducted: false
   },
   {
     id: 4,
@@ -1095,6 +1140,7 @@ const initialVaccinations: Vaccination[] = [
     clientName: "Sophie Leroux",
     vaccineName: "Bordetella",
     vaccineType: "non-core",
+    vaccinationCategory: "new",
     dateGiven: "2024-01-18",
     nextDueDate: "2025-01-18",
     batchNumber: "BOR2024-008",
@@ -1105,7 +1151,10 @@ const initialVaccinations: Vaccination[] = [
     location: "left_shoulder",
     manufacturer: "Zoetis",
     expirationDate: "2025-09-30",
-    createdAt: "2024-01-18T16:15:00Z"
+    createdAt: "2024-01-18T16:15:00Z",
+    isInStock: false,
+    stockQuantity: 0,
+    stockDeducted: false
   },
   {
     id: 5,
@@ -1115,6 +1164,7 @@ const initialVaccinations: Vaccination[] = [
     clientName: "Marie Dubois",
     vaccineName: "Lyme",
     vaccineType: "non-core",
+    vaccinationCategory: "new",
     dateGiven: "2024-01-25",
     nextDueDate: "2024-04-25",
     batchNumber: "LYM2024-003",
@@ -1125,7 +1175,10 @@ const initialVaccinations: Vaccination[] = [
     location: "left_hip",
     manufacturer: "Boehringer Ingelheim",
     expirationDate: "2025-11-20",
-    createdAt: "2024-01-25T09:00:00Z"
+    createdAt: "2024-01-25T09:00:00Z",
+    isInStock: false,
+    stockQuantity: 0,
+    stockDeducted: false
   }
 ];
 
@@ -1152,7 +1205,10 @@ const initialAntiparasitics: Antiparasitic[] = [
     status: 'completed',
     cost: '25.50',
     sideEffects: '',
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    isInStock: false,
+    stockQuantity: 0,
+    stockDeducted: false
   },
   {
     id: 2,
@@ -1175,7 +1231,10 @@ const initialAntiparasitics: Antiparasitic[] = [
     status: 'completed',
     cost: '18.00',
     sideEffects: '',
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    isInStock: false,
+    stockQuantity: 0,
+    stockDeducted: false
   }
 ];
 
@@ -1793,6 +1852,9 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       const savedStockItems = localStorage.getItem('vetpro-stockItems');
       const savedStockAlerts = localStorage.getItem('vetpro-stockAlerts');
       const savedStockMovements = localStorage.getItem('vetpro-stockMovements');
+      const savedAccountingEntries = localStorage.getItem('vetpro-accountingEntries');
+      const savedRecurringCharges = localStorage.getItem('vetpro-recurringCharges');
+      const savedGeneratedEntries = localStorage.getItem('vetpro-generatedEntries');
       console.log('🔍 loadDataFromStorage - DEBUGGING ANTIPARASITICS:');
       console.log('   savedAntiparasitics raw:', savedAntiparasitics);
       console.log('   localStorage vetpro-antiparasitics exists:', !!localStorage.getItem('vetpro-antiparasitics'));
@@ -1814,6 +1876,9 @@ export function ClientProvider({ children }: { children: ReactNode }) {
         const parsedStockItems = savedStockItems ? JSON.parse(savedStockItems) : initialStockItems;
         const parsedStockAlerts = savedStockAlerts ? JSON.parse(savedStockAlerts) : [];
         const parsedStockMovements = savedStockMovements ? JSON.parse(savedStockMovements) : [];
+        const parsedAccountingEntries = savedAccountingEntries ? JSON.parse(savedAccountingEntries) : [];
+        const parsedRecurringCharges = savedRecurringCharges ? JSON.parse(savedRecurringCharges) : [];
+        const parsedGeneratedEntries = savedGeneratedEntries ? JSON.parse(savedGeneratedEntries) : [];
         console.log('✅ loadDataFromStorage - PARSED ANTIPARASITICS:');
         console.log('   parsedAntiparasitics:', parsedAntiparasitics);
         console.log('   Length:', parsedAntiparasitics?.length || 0);
@@ -1841,7 +1906,10 @@ export function ClientProvider({ children }: { children: ReactNode }) {
           antiparasiticProtocols: parsedAntiparasiticProtocols,
           stockItems: parsedStockItems,
           stockAlerts: parsedStockAlerts,
-          stockMovements: parsedStockMovements
+          stockMovements: parsedStockMovements,
+          accountingEntries: parsedAccountingEntries,
+          recurringCharges: parsedRecurringCharges,
+          generatedEntries: parsedGeneratedEntries
         };
       }
     } catch (error) {
@@ -1869,7 +1937,10 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       antiparasiticProtocols: initialAntiparasiticProtocols,
       stockItems: initialStockItems,
       stockAlerts: [],
-      stockMovements: []
+      stockMovements: [],
+      accountingEntries: [],
+      recurringCharges: [],
+      generatedEntries: []
     };
   };
 
@@ -1889,7 +1960,10 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     antiparasiticProtocolsData: AntiparasiticProtocol[] = antiparasiticProtocols,
     stockItemsData: StockItem[] = stockItems,
     stockAlertsData: StockAlert[] = stockAlerts,
-    stockMovementsData: StockMovement[] = stockMovements
+    stockMovementsData: StockMovement[] = stockMovements,
+    accountingEntriesData: AccountingEntry[] = accountingEntries,
+    recurringChargesData: RecurringCharge[] = recurringCharges,
+    generatedEntriesData: GeneratedEntry[] = generatedEntries
   ) => {
     try {
       localStorage.setItem('vetpro-clients', JSON.stringify(clientsData));
@@ -1907,6 +1981,9 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('vetpro-stockItems', JSON.stringify(stockItemsData));
       localStorage.setItem('vetpro-stockAlerts', JSON.stringify(stockAlertsData));
       localStorage.setItem('vetpro-stockMovements', JSON.stringify(stockMovementsData));
+      localStorage.setItem('vetpro-accountingEntries', JSON.stringify(accountingEntriesData));
+      localStorage.setItem('vetpro-recurringCharges', JSON.stringify(recurringChargesData));
+      localStorage.setItem('vetpro-generatedEntries', JSON.stringify(generatedEntriesData));
       console.log('saveDataToStorage - antiparasitics saved:', antiparasiticsData);
     } catch (error) {
       console.error('Erreur lors de la sauvegarde des données:', error);
@@ -1932,6 +2009,115 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   const [stockAlerts, setStockAlerts] = useState<StockAlert[]>(initialData.stockAlerts || []);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>(initialData.stockMovements || []);
   
+  // Exemples par défaut de charges récurrentes
+  const defaultRecurringCharges: RecurringCharge[] = [
+    {
+      id: 1,
+      name: "Loyer",
+      description: "Loyer mensuel de la clinique",
+      amount: 3000,
+      frequency: "monthly",
+      type: "expense",
+      source: "rent",
+      dayOfMonth: 1,
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: "",
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      lastGenerated: "",
+      notes: "Loyer mensuel de la clinique vétérinaire"
+    },
+    {
+      id: 2,
+      name: "Salaire Secrétaire",
+      description: "Salaire mensuel de la secrétaire",
+      amount: 3000,
+      frequency: "monthly",
+      type: "expense",
+      source: "salary",
+      dayOfMonth: 1,
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: "",
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      lastGenerated: "",
+      notes: "Salaire mensuel de la secrétaire"
+    },
+    {
+      id: 3,
+      name: "Impôts",
+      description: "Impôts annuels",
+      amount: 3000,
+      frequency: "annual",
+      type: "expense",
+      source: "tax",
+      monthOfYear: 12,
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: "",
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      lastGenerated: "",
+      notes: "Impôts annuels de la clinique"
+    },
+    {
+      id: 4,
+      name: "CNSS Secrétaire",
+      description: "Cotisations sociales secrétaire",
+      amount: 700,
+      frequency: "monthly",
+      type: "expense",
+      source: "insurance",
+      dayOfMonth: 1,
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: "",
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      lastGenerated: "",
+      notes: "Cotisations sociales CNSS pour la secrétaire"
+    },
+    {
+      id: 5,
+      name: "CNSS Vétérinaire",
+      description: "Cotisations sociales vétérinaire",
+      amount: 1500,
+      frequency: "monthly",
+      type: "expense",
+      source: "insurance",
+      dayOfMonth: 1,
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: "",
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      lastGenerated: "",
+      notes: "Cotisations sociales CNSS pour le vétérinaire"
+    },
+    {
+      id: 6,
+      name: "Cotisation Ordre des Vétérinaires",
+      description: "Cotisation annuelle à l'Ordre des Vétérinaires",
+      amount: 1200,
+      frequency: "annual",
+      type: "expense",
+      source: "other",
+      monthOfYear: 1,
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: "",
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      lastGenerated: "",
+      notes: "Cotisation annuelle à l'Ordre des Vétérinaires"
+    }
+  ];
+
+  // États pour la gestion comptable
+  const [accountingEntries, setAccountingEntries] = useState<AccountingEntry[]>(initialData.accountingEntries || []);
+  const [recurringCharges, setRecurringCharges] = useState<RecurringCharge[]>(
+    initialData.recurringCharges && initialData.recurringCharges.length > 0 
+      ? initialData.recurringCharges 
+      : defaultRecurringCharges
+  );
+  const [generatedEntries, setGeneratedEntries] = useState<GeneratedEntry[]>(initialData.generatedEntries || []);
+  
   console.log('🚀 ClientContext - ANTIPARASITICS DEBUG:');
   console.log('   Initial antiparasitics from storage:', initialData.antiparasitics);
   console.log('   Current antiparasitics state:', antiparasitics);
@@ -1953,6 +2139,36 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       setAntiparasitics(initialAntiparasitics);
     }
   }, []);
+
+  // Générer automatiquement les entrées récurrentes pour la période actuelle
+  useEffect(() => {
+    const currentDate = new Date();
+    const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+    const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+    
+    // Générer les entrées pour le mois actuel
+    generateRecurringEntries(
+      startOfMonth.toISOString().split('T')[0],
+      endOfMonth.toISOString().split('T')[0]
+    );
+  }, [recurringCharges]); // Se déclenche quand les charges récurrentes changent
+
+  // Générer automatiquement les entrées comptables quand les données changent
+  useEffect(() => {
+    const currentDate = new Date();
+    const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+    const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+    
+    // Recalculer les entrées comptables automatiques
+    calculateAutomaticRevenue(
+      startOfMonth.toISOString().split('T')[0],
+      endOfMonth.toISOString().split('T')[0]
+    );
+    calculateAutomaticExpenses(
+      startOfMonth.toISOString().split('T')[0],
+      endOfMonth.toISOString().split('T')[0]
+    );
+  }, [consultations, vaccinations, antiparasitics, prescriptions, stockMovements]); // Se déclenche quand les données changent
 
   // Debug: Monitor antiparasitics state changes
   useEffect(() => {
@@ -2347,14 +2563,86 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   };
 
   // CRUD Antiparasites
+  // Fonction pour vérifier et gérer le stock des antiparasitaires
+  const checkAndManageAntiparasiticStock = (antiparasiticData: Omit<Antiparasitic, 'id' | 'createdAt'>) => {
+    // Chercher l'antiparasitaire dans le stock (catégorie medication)
+    const stockItem = stockItems.find(item => 
+      item.name.toLowerCase() === antiparasiticData.productName.toLowerCase() && 
+      item.category === 'medication' &&
+      item.isActive
+    );
+
+    if (stockItem && stockItem.currentStock >= 1) {
+      // L'antiparasitaire est en stock et disponible
+      return {
+        ...antiparasiticData,
+        stockItemId: stockItem.id,
+        isInStock: true,
+        stockQuantity: stockItem.currentStock,
+        stockDeducted: true
+      };
+    } else if (stockItem && stockItem.currentStock > 0) {
+      // L'antiparasitaire est en stock mais quantité insuffisante
+      return {
+        ...antiparasiticData,
+        stockItemId: stockItem.id,
+        isInStock: true,
+        stockQuantity: stockItem.currentStock,
+        stockDeducted: false // Pas de déduction car quantité insuffisante
+      };
+    } else {
+      // L'antiparasitaire n'est pas en stock
+      return {
+        ...antiparasiticData,
+        isInStock: false,
+        stockQuantity: 0,
+        stockDeducted: false
+      };
+    }
+  };
+
   const addAntiparasitic = (antiparasiticData: Omit<Antiparasitic, 'id' | 'createdAt'>) => {
+    // Vérifier et gérer le stock pour l'antiparasitaire
+    const antiparasiticWithStock = checkAndManageAntiparasiticStock(antiparasiticData);
+    
+    // Déduire la quantité du stock si l'antiparasitaire est disponible
+    let updatedStockItems = [...stockItems];
+    
+    if (antiparasiticWithStock.stockDeducted && antiparasiticWithStock.stockItemId) {
+      const stockItemIndex = updatedStockItems.findIndex(item => item.id === antiparasiticWithStock.stockItemId);
+      if (stockItemIndex !== -1) {
+        const stockItem = updatedStockItems[stockItemIndex];
+        updatedStockItems[stockItemIndex] = {
+          ...stockItem,
+          currentStock: stockItem.currentStock - 1, // Un antiparasitaire = 1 unité
+          lastUpdated: new Date().toISOString()
+        };
+
+        // Enregistrer le mouvement de stock en utilisant la fonction du contexte
+        const movement = addStockMovement({
+          itemId: antiparasiticWithStock.stockItemId,
+          itemName: antiparasiticWithStock.productName,
+          type: 'out',
+          quantity: 1,
+          reason: 'Traitement antiparasitaire',
+          reference: `Antiparasitaire #${Math.max(0, ...antiparasitics.map(a => a.id)) + 1}`,
+          performedBy: antiparasiticWithStock.veterinarian,
+          date: new Date().toISOString(),
+          notes: `Traitement antiparasitaire de ${antiparasiticWithStock.petName} - ${antiparasiticWithStock.productName}`
+        });
+        console.log('Mouvement de stock antiparasitaire enregistré:', movement);
+      }
+    }
+
     const newAntiparasitic: Antiparasitic = {
-      ...antiparasiticData,
+      ...antiparasiticWithStock,
       id: Math.max(0, ...antiparasitics.map(a => a.id)) + 1,
       createdAt: new Date().toISOString()
     };
+    
     const updatedAntiparasitics = [...antiparasitics, newAntiparasitic];
     setAntiparasitics(updatedAntiparasitics);
+    setStockItems(updatedStockItems);
     
     console.log('✅ Antiparasitaire ajouté avec succès:', newAntiparasitic);
     console.log('📊 Total antiparasitaires après ajout:', updatedAntiparasitics.length);
@@ -2364,7 +2652,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     updateClientStats(antiparasiticData.clientId);
     
     // Sauvegarder toutes les données avec vérification
-    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, updatedAntiparasitics, antiparasiticProtocols);
+    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, updatedAntiparasitics, antiparasiticProtocols, updatedStockItems, stockAlerts, stockMovements);
     
     // Vérifier la sauvegarde
     const savedData = localStorage.getItem('vetpro-antiparasitics');
@@ -2499,16 +2787,92 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   };
 
   // Fonctions de gestion des prescriptions
+  // Fonction pour vérifier et gérer le stock des médicaments
+  const checkAndManageStock = (medications: PrescriptionMedication[]) => {
+    return medications.map(medication => {
+      // Chercher le médicament dans le stock
+      const stockItem = stockItems.find(item => 
+        item.name.toLowerCase() === medication.name.toLowerCase() && 
+        item.category === 'medication' &&
+        item.isActive
+      );
+
+      if (stockItem && stockItem.currentStock >= medication.quantity) {
+        // Le médicament est en stock et disponible en quantité suffisante
+        return {
+          ...medication,
+          stockItemId: stockItem.id,
+          isInStock: true,
+          stockQuantity: stockItem.currentStock,
+          stockDeducted: true
+        };
+      } else if (stockItem && stockItem.currentStock > 0) {
+        // Le médicament est en stock mais quantité insuffisante
+        return {
+          ...medication,
+          stockItemId: stockItem.id,
+          isInStock: true,
+          stockQuantity: stockItem.currentStock,
+          stockDeducted: false // Pas de déduction car quantité insuffisante
+        };
+      } else {
+        // Le médicament n'est pas en stock
+        return {
+          ...medication,
+          isInStock: false,
+          stockQuantity: 0,
+          stockDeducted: false
+        };
+      }
+    });
+  };
+
   const addPrescription = (prescriptionData: Omit<Prescription, 'id' | 'createdAt'>) => {
+    // Vérifier et gérer le stock pour chaque médicament
+    const medicationsWithStock = checkAndManageStock(prescriptionData.medications);
+    
+    // Déduire les quantités du stock pour les médicaments disponibles
+    let updatedStockItems = [...stockItems];
+    
+    medicationsWithStock.forEach(medication => {
+      if (medication.stockDeducted && medication.stockItemId) {
+        const stockItemIndex = updatedStockItems.findIndex(item => item.id === medication.stockItemId);
+        if (stockItemIndex !== -1) {
+          const stockItem = updatedStockItems[stockItemIndex];
+          updatedStockItems[stockItemIndex] = {
+            ...stockItem,
+            currentStock: stockItem.currentStock - medication.quantity,
+            lastUpdated: new Date().toISOString()
+          };
+
+          // Enregistrer le mouvement de stock en utilisant la fonction du contexte
+          const movement = addStockMovement({
+            itemId: medication.stockItemId,
+            itemName: medication.name,
+            type: 'out',
+            quantity: medication.quantity,
+            reason: 'Prescription médicale',
+            reference: `Prescription #${Math.max(...prescriptions.map(p => p.id), 0) + 1}`,
+            performedBy: prescriptionData.prescribedBy,
+            date: new Date().toISOString(),
+            notes: `Prescription pour ${prescriptionData.petName} - ${prescriptionData.diagnosis}`
+          });
+          console.log('Mouvement de stock enregistré:', movement);
+        }
+      }
+    });
+
     const newPrescription: Prescription = {
       ...prescriptionData,
+      medications: medicationsWithStock,
       id: Math.max(...prescriptions.map(p => p.id), 0) + 1,
       createdAt: new Date().toISOString()
     };
     
     const updatedPrescriptions = [...prescriptions, newPrescription];
     setPrescriptions(updatedPrescriptions);
-    saveDataToStorage(clients, pets, consultations, appointments, updatedPrescriptions);
+    setStockItems(updatedStockItems);
+    saveDataToStorage(clients, pets, consultations, appointments, updatedPrescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, updatedStockItems, stockAlerts, stockMovements, accountingEntries, recurringCharges, generatedEntries);
   };
 
   const updatePrescription = (id: number, prescriptionData: Partial<Prescription>) => {
@@ -2516,13 +2880,13 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       prescription.id === id ? { ...prescription, ...prescriptionData } : prescription
     );
     setPrescriptions(updatedPrescriptions);
-    saveDataToStorage(clients, pets, consultations, appointments, updatedPrescriptions);
+    saveDataToStorage(clients, pets, consultations, appointments, updatedPrescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, accountingEntries, recurringCharges, generatedEntries);
   };
 
   const deletePrescription = (id: number) => {
     const updatedPrescriptions = prescriptions.filter(prescription => prescription.id !== id);
     setPrescriptions(updatedPrescriptions);
-    saveDataToStorage(clients, pets, consultations, appointments, updatedPrescriptions);
+    saveDataToStorage(clients, pets, consultations, appointments, updatedPrescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, accountingEntries, recurringCharges, generatedEntries);
   };
 
   const getPrescriptionById = (id: number) => prescriptions.find(p => p.id === id);
@@ -2606,19 +2970,92 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   };
 
   // Fonctions de gestion des vaccinations
+  // Fonction pour vérifier et gérer le stock des vaccins
+  const checkAndManageVaccineStock = (vaccinationData: Omit<Vaccination, 'id' | 'createdAt'>) => {
+    // Chercher le vaccin dans le stock
+    const stockItem = stockItems.find(item => 
+      item.name.toLowerCase() === vaccinationData.vaccineName.toLowerCase() && 
+      item.category === 'vaccine' &&
+      item.isActive
+    );
+
+    if (stockItem && stockItem.currentStock >= 1) {
+      // Le vaccin est en stock et disponible
+      return {
+        ...vaccinationData,
+        stockItemId: stockItem.id,
+        isInStock: true,
+        stockQuantity: stockItem.currentStock,
+        stockDeducted: true
+      };
+    } else if (stockItem && stockItem.currentStock > 0) {
+      // Le vaccin est en stock mais quantité insuffisante
+      return {
+        ...vaccinationData,
+        stockItemId: stockItem.id,
+        isInStock: true,
+        stockQuantity: stockItem.currentStock,
+        stockDeducted: false // Pas de déduction car quantité insuffisante
+      };
+    } else {
+      // Le vaccin n'est pas en stock
+      return {
+        ...vaccinationData,
+        isInStock: false,
+        stockQuantity: 0,
+        stockDeducted: false
+      };
+    }
+  };
+
   const addVaccination = (vaccinationData: Omit<Vaccination, 'id' | 'createdAt'>) => {
+    // Vérifier et gérer le stock pour le vaccin
+    const vaccinationWithStock = checkAndManageVaccineStock(vaccinationData);
+    
+    // Déduire la quantité du stock si le vaccin est disponible
+    let updatedStockItems = [...stockItems];
+    
+    if (vaccinationWithStock.stockDeducted && vaccinationWithStock.stockItemId) {
+      const stockItemIndex = updatedStockItems.findIndex(item => item.id === vaccinationWithStock.stockItemId);
+      if (stockItemIndex !== -1) {
+        const stockItem = updatedStockItems[stockItemIndex];
+        updatedStockItems[stockItemIndex] = {
+          ...stockItem,
+          currentStock: stockItem.currentStock - 1, // Un vaccin = 1 dose
+          lastUpdated: new Date().toISOString()
+        };
+
+        // Enregistrer le mouvement de stock en utilisant la fonction du contexte
+        const movement = addStockMovement({
+          itemId: vaccinationWithStock.stockItemId,
+          itemName: vaccinationWithStock.vaccineName,
+          type: 'out',
+          quantity: 1,
+          reason: 'Vaccination',
+          reference: `Vaccination #${Math.max(...vaccinations.map(v => v.id), 0) + 1}`,
+          performedBy: vaccinationWithStock.veterinarian,
+          date: new Date().toISOString(),
+          notes: `Vaccination de ${vaccinationWithStock.petName} - ${vaccinationWithStock.vaccineName}`
+        });
+        console.log('Mouvement de stock vaccin enregistré:', movement);
+      }
+    }
+
     const newVaccination: Vaccination = {
-      ...vaccinationData,
+      ...vaccinationWithStock,
       id: Math.max(...vaccinations.map(v => v.id), 0) + 1,
       createdAt: new Date().toISOString()
     };
+    
     setVaccinations(prevVaccinations => {
       const updatedVaccinations = [...prevVaccinations, newVaccination];
-      updateClientStats(vaccinationData.clientId);
-      saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, updatedVaccinations);
+    updateClientStats(vaccinationData.clientId);
+      saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, updatedVaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, updatedStockItems, stockAlerts, stockMovements);
       console.log('🔄 addVaccination - total vaccinations after add:', updatedVaccinations.length, updatedVaccinations.map(v => ({id:v.id, category:v.vaccinationCategory})));
       return updatedVaccinations;
     });
+    
+    setStockItems(updatedStockItems);
     return newVaccination.id;
   };
 
@@ -2945,6 +3382,530 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     return reminderVaccination;
   };
 
+  // Fonctions de gestion comptable
+  const addAccountingEntry = (entryData: Omit<AccountingEntry, 'id' | 'createdAt'>) => {
+    const newEntry: AccountingEntry = {
+      ...entryData,
+      id: Math.max(...accountingEntries.map(e => e.id), 0) + 1,
+      createdAt: new Date().toISOString()
+    };
+    
+    const updatedEntries = [...accountingEntries, newEntry];
+    setAccountingEntries(updatedEntries);
+    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, updatedEntries);
+    
+    return newEntry;
+  };
+
+  const updateAccountingEntry = (id: number, updates: Partial<AccountingEntry>) => {
+    const updatedEntries = accountingEntries.map(entry => 
+      entry.id === id ? { ...entry, ...updates } : entry
+    );
+    setAccountingEntries(updatedEntries);
+    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, updatedEntries);
+  };
+
+  const deleteAccountingEntry = (id: number) => {
+    const updatedEntries = accountingEntries.filter(entry => entry.id !== id);
+    setAccountingEntries(updatedEntries);
+    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, updatedEntries);
+  };
+
+  // Fonction pour calculer automatiquement les recettes
+  const calculateAutomaticRevenue = (startDate: string, endDate: string) => {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    let totalRevenue = 0;
+    const revenueBreakdown = {
+      consultations: 0,
+      vaccinations: 0,
+      antiparasitics: 0,
+      prescriptions: 0,
+      stockSales: 0,
+      manualEntries: 0,
+      recurringCharges: 0
+    };
+
+    // Recettes des consultations
+    consultations
+      .filter(c => {
+        const consultationDate = new Date(c.date);
+        return consultationDate >= start && consultationDate <= end;
+      })
+      .forEach(consultation => {
+        const cost = parseFloat(consultation.cost?.toString() || '0');
+        totalRevenue += cost;
+        revenueBreakdown.consultations += cost;
+        
+        // Créer une entrée comptable automatique si elle n'existe pas
+        const existingEntry = accountingEntries.find(e => 
+          e.source === 'consultation' && e.sourceId === consultation.id
+        );
+        if (!existingEntry) {
+          addAccountingEntry({
+            type: 'revenue',
+            category: 'automatic',
+            frequency: 'occasional',
+            description: `Consultation - ${consultation.petName}`,
+            amount: cost,
+            date: consultation.date,
+            reference: `Consultation #${consultation.id}`,
+            source: 'consultation',
+            sourceId: consultation.id,
+            notes: `Consultation automatique pour ${consultation.petName}`
+          });
+        }
+      });
+
+    // Recettes des vaccinations
+    vaccinations
+      .filter(v => {
+        const vaccinationDate = new Date(v.dateGiven);
+        return vaccinationDate >= start && vaccinationDate <= end;
+      })
+      .forEach(vaccination => {
+        const cost = parseFloat(vaccination.cost?.toString() || '0');
+        totalRevenue += cost;
+        revenueBreakdown.vaccinations += cost;
+        
+        const existingEntry = accountingEntries.find(e => 
+          e.source === 'vaccination' && e.sourceId === vaccination.id
+        );
+        if (!existingEntry) {
+          addAccountingEntry({
+            type: 'revenue',
+            category: 'automatic',
+            frequency: 'occasional',
+            description: `Vaccination - ${vaccination.vaccineName}`,
+            amount: cost,
+            date: vaccination.dateGiven,
+            reference: `Vaccination #${vaccination.id}`,
+            source: 'vaccination',
+            sourceId: vaccination.id,
+            notes: `Vaccination automatique pour ${vaccination.petName}`
+          });
+        }
+      });
+
+    // Recettes des antiparasitaires
+    antiparasitics
+      .filter(a => {
+        const antiparasiticDate = new Date(a.dateGiven);
+        return antiparasiticDate >= start && antiparasiticDate <= end;
+      })
+      .forEach(antiparasitic => {
+        const cost = parseFloat(antiparasitic.cost?.toString() || '0');
+        totalRevenue += cost;
+        revenueBreakdown.antiparasitics += cost;
+        
+        const existingEntry = accountingEntries.find(e => 
+          e.source === 'antiparasitic' && e.sourceId === antiparasitic.id
+        );
+        if (!existingEntry) {
+          addAccountingEntry({
+            type: 'revenue',
+            category: 'automatic',
+            frequency: 'occasional',
+            description: `Antiparasitaire - ${antiparasitic.productName}`,
+            amount: cost,
+            date: antiparasitic.dateGiven,
+            reference: `Antiparasitaire #${antiparasitic.id}`,
+            source: 'antiparasitic',
+            sourceId: antiparasitic.id,
+            notes: `Antiparasitaire automatique pour ${antiparasitic.petName}`
+          });
+        }
+      });
+
+    // Recettes des prescriptions
+    prescriptions
+      .filter(p => {
+        const prescriptionDate = new Date(p.createdAt);
+        return prescriptionDate >= start && prescriptionDate <= end;
+      })
+      .forEach(prescription => {
+        const totalCost = prescription.medications.reduce((sum, med) => {
+          return sum + (parseFloat(med.cost?.toString() || '0') * med.quantity);
+        }, 0);
+        totalRevenue += totalCost;
+        revenueBreakdown.prescriptions += totalCost;
+        
+        const existingEntry = accountingEntries.find(e => 
+          e.source === 'prescription' && e.sourceId === prescription.id
+        );
+        if (!existingEntry && totalCost > 0) {
+          addAccountingEntry({
+            type: 'revenue',
+            category: 'automatic',
+            frequency: 'occasional',
+            description: `Prescription - ${prescription.petName}`,
+            amount: totalCost,
+            date: prescription.createdAt,
+            reference: `Prescription #${prescription.id}`,
+            source: 'prescription',
+            sourceId: prescription.id,
+            notes: `Prescription automatique pour ${prescription.petName}`
+          });
+        }
+      });
+
+    return { totalRevenue, revenueBreakdown };
+  };
+
+  // Fonction pour calculer automatiquement les charges
+  const calculateAutomaticExpenses = (startDate: string, endDate: string) => {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    let totalExpenses = 0;
+    const expenseBreakdown = {
+      stockPurchases: 0,
+      salaries: 0,
+      rent: 0,
+      taxes: 0,
+      insurance: 0,
+      other: 0,
+      manualEntries: 0,
+      recurringCharges: 0
+    };
+
+    // Charges des achats de stock
+    stockMovements
+      .filter(m => {
+        const movementDate = new Date(m.date);
+        return movementDate >= start && movementDate <= end && m.type === 'in' && m.reason === 'Achat fournisseur';
+      })
+      .forEach(movement => {
+        // Trouver l'item de stock pour calculer le coût
+        const stockItem = stockItems.find(item => item.id === movement.itemId);
+        if (stockItem) {
+          const cost = stockItem.purchasePrice * movement.quantity;
+          totalExpenses += cost;
+          expenseBreakdown.stockPurchases += cost;
+          
+          const existingEntry = accountingEntries.find(e => 
+            e.source === 'stock_purchase' && e.reference === movement.reference
+          );
+          if (!existingEntry) {
+            addAccountingEntry({
+              type: 'expense',
+              category: 'automatic',
+              frequency: 'occasional',
+              description: `Achat stock - ${movement.itemName}`,
+              amount: cost,
+              date: movement.date,
+              reference: movement.reference,
+              source: 'stock_purchase',
+              notes: `Achat automatique de ${movement.quantity} ${movement.itemName}`
+            });
+          }
+        }
+      });
+
+    // Note: Les charges manuelles sont gérées séparément dans generateAccountingSummary
+    // pour éviter la double comptabilisation
+
+    return { totalExpenses, expenseBreakdown };
+  };
+
+  // Fonction pour générer un résumé comptable
+  const generateAccountingSummary = (period: string, startDate: string, endDate: string): AccountingSummary => {
+    const { totalRevenue, revenueBreakdown } = calculateAutomaticRevenue(startDate, endDate);
+    const { totalExpenses, expenseBreakdown } = calculateAutomaticExpenses(startDate, endDate);
+    
+    // Ajouter les recettes manuelles
+    const manualRevenue = accountingEntries
+      .filter(e => {
+        const entryDate = new Date(e.date);
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        return entryDate >= start && entryDate <= end && e.category === 'manual' && e.type === 'revenue';
+      })
+      .reduce((sum, entry) => sum + entry.amount, 0);
+    
+    // Ajouter les charges manuelles
+    const manualExpenses = accountingEntries
+      .filter(e => {
+        const entryDate = new Date(e.date);
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        return entryDate >= start && entryDate <= end && e.category === 'manual' && e.type === 'expense';
+      })
+      .reduce((sum, entry) => sum + entry.amount, 0);
+    
+    // Calculer les charges récurrentes confirmées et payées pour la période
+    const recurringExpensesForPeriod = generatedEntries
+      .filter(entry => {
+        const recurringCharge = recurringCharges.find(c => c.id === entry.recurringChargeId);
+        return recurringCharge && 
+               recurringCharge.type === 'expense' && 
+               entry.status === 'confirmed' && 
+               entry.paymentStatus === 'paid' &&
+               entry.period >= startDate && 
+               entry.period <= endDate;
+      })
+      .reduce((total, entry) => {
+        const recurringCharge = recurringCharges.find(c => c.id === entry.recurringChargeId);
+        return total + (recurringCharge ? recurringCharge.amount : 0);
+      }, 0);
+    
+    // Calculer les recettes récurrentes confirmées et payées pour la période
+    const recurringRevenueForPeriod = generatedEntries
+      .filter(entry => {
+        const recurringCharge = recurringCharges.find(c => c.id === entry.recurringChargeId);
+        return recurringCharge && 
+               recurringCharge.type === 'revenue' && 
+               entry.status === 'confirmed' && 
+               entry.paymentStatus === 'paid' &&
+               entry.period >= startDate && 
+               entry.period <= endDate;
+      })
+      .reduce((total, entry) => {
+        const recurringCharge = recurringCharges.find(c => c.id === entry.recurringChargeId);
+        return total + (recurringCharge ? recurringCharge.amount : 0);
+      }, 0);
+    
+    // Mettre à jour les breakdowns
+    revenueBreakdown.manualEntries = manualRevenue;
+    revenueBreakdown.recurringCharges = recurringRevenueForPeriod;
+    expenseBreakdown.manualEntries = manualExpenses;
+    expenseBreakdown.recurringCharges = recurringExpensesForPeriod;
+    
+    // Calculer les totaux finaux
+    const finalTotalRevenue = totalRevenue + manualRevenue + recurringRevenueForPeriod;
+    const finalTotalExpenses = totalExpenses + manualExpenses + recurringExpensesForPeriod;
+    
+    return {
+      period,
+      totalRevenue: finalTotalRevenue,
+      totalExpenses: finalTotalExpenses,
+      netIncome: finalTotalRevenue - finalTotalExpenses,
+      revenueBreakdown,
+      expenseBreakdown
+    };
+  };
+
+  // Fonctions de gestion des charges récurrentes
+  const addRecurringCharge = (chargeData: Omit<RecurringCharge, 'id' | 'createdAt' | 'lastGenerated'>) => {
+    const newCharge: RecurringCharge = {
+      ...chargeData,
+      id: Math.max(...recurringCharges.map(c => c.id), 0) + 1,
+      createdAt: new Date().toISOString()
+    };
+    
+    const updatedCharges = [...recurringCharges, newCharge];
+    setRecurringCharges(updatedCharges);
+    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, accountingEntries, updatedCharges, generatedEntries);
+    
+    return newCharge;
+  };
+
+  const updateRecurringCharge = (id: number, updates: Partial<RecurringCharge>) => {
+    const updatedCharges = recurringCharges.map(charge => 
+      charge.id === id ? { ...charge, ...updates } : charge
+    );
+    setRecurringCharges(updatedCharges);
+    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, accountingEntries, updatedCharges, generatedEntries);
+  };
+
+  const deleteRecurringCharge = (id: number) => {
+    const updatedCharges = recurringCharges.filter(charge => charge.id !== id);
+    setRecurringCharges(updatedCharges);
+    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, accountingEntries, updatedCharges, generatedEntries);
+  };
+
+  // Fonction pour générer les entrées récurrentes pour une période
+  const generateRecurringEntries = (startDate: string, endDate: string) => {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const newGeneratedEntries: GeneratedEntry[] = [];
+
+    recurringCharges
+      .filter(charge => charge.isActive)
+      .forEach(charge => {
+        const chargeStart = new Date(charge.startDate);
+        const chargeEnd = charge.endDate ? new Date(charge.endDate) : end;
+        
+        // Vérifier si la charge est active pour la période
+        if (chargeStart <= end && chargeEnd >= start) {
+          const periods = getRecurringPeriods(charge, start, end);
+          
+          periods.forEach(period => {
+            // Vérifier si une entrée n'a pas déjà été générée pour cette période
+            const existingEntry = generatedEntries.find(entry => 
+              entry.recurringChargeId === charge.id && entry.period === period
+            );
+            
+            if (!existingEntry) {
+              const generatedEntry: GeneratedEntry = {
+                id: Math.max(...generatedEntries.map(e => e.id), 0) + newGeneratedEntries.length + 1,
+                recurringChargeId: charge.id,
+                period,
+                status: 'pending',
+                generatedDate: new Date().toISOString(),
+                paymentStatus: 'unpaid',
+                paidDate: undefined
+              };
+              
+              newGeneratedEntries.push(generatedEntry);
+            }
+          });
+        }
+      });
+
+    if (newGeneratedEntries.length > 0) {
+      const updatedGeneratedEntries = [...generatedEntries, ...newGeneratedEntries];
+      setGeneratedEntries(updatedGeneratedEntries);
+      saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, accountingEntries, recurringCharges, updatedGeneratedEntries);
+    }
+
+    return newGeneratedEntries;
+  };
+
+  // Fonction pour confirmer une entrée générée
+  const confirmGeneratedEntry = (generatedEntryId: number, modifiedAmount?: number) => {
+    const generatedEntry = generatedEntries.find(e => e.id === generatedEntryId);
+    if (!generatedEntry) return;
+
+    const recurringCharge = recurringCharges.find(c => c.id === generatedEntry.recurringChargeId);
+    if (!recurringCharge) return;
+
+    const amount = modifiedAmount || recurringCharge.amount;
+    const entryDate = getEntryDateForPeriod(recurringCharge, generatedEntry.period);
+
+    // Créer l'entrée comptable
+    const accountingEntry = addAccountingEntry({
+      type: recurringCharge.type,
+      category: 'manual',
+      frequency: recurringCharge.frequency === 'quarterly' ? 'occasional' : recurringCharge.frequency,
+      description: recurringCharge.description,
+      amount,
+      date: entryDate,
+      source: recurringCharge.source,
+      notes: `Entrée récurrente: ${recurringCharge.name} (${generatedEntry.period})`
+    });
+
+    // Mettre à jour l'entrée générée
+    const updatedGeneratedEntries = generatedEntries.map(entry => 
+      entry.id === generatedEntryId 
+        ? { 
+            ...entry, 
+            status: 'confirmed' as const,
+            accountingEntryId: accountingEntry.id,
+            confirmedDate: new Date().toISOString(),
+            modifiedAmount: modifiedAmount
+          }
+        : entry
+    );
+    setGeneratedEntries(updatedGeneratedEntries);
+    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, accountingEntries, recurringCharges, updatedGeneratedEntries);
+  };
+
+  // Fonction pour annuler une entrée générée
+  const cancelGeneratedEntry = (generatedEntryId: number) => {
+    const updatedGeneratedEntries = generatedEntries.filter(entry => entry.id !== generatedEntryId);
+    setGeneratedEntries(updatedGeneratedEntries);
+    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, accountingEntries, recurringCharges, updatedGeneratedEntries);
+  };
+
+  // Fonction pour réinitialiser les charges récurrentes aux valeurs par défaut
+  const resetRecurringChargesToDefault = () => {
+    setRecurringCharges(defaultRecurringCharges);
+    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, accountingEntries, defaultRecurringCharges, generatedEntries);
+  };
+
+  // Fonction pour changer le statut de paiement d'une entrée générée
+  const updateGeneratedEntryPaymentStatus = (id: number, status: 'paid' | 'unpaid' | 'pending') => {
+    const updatedEntries = generatedEntries.map(entry => 
+      entry.id === id 
+        ? { 
+            ...entry, 
+            paymentStatus: status,
+            paidDate: status === 'paid' ? new Date().toISOString().split('T')[0] : undefined
+          } 
+        : entry
+    );
+    setGeneratedEntries(updatedEntries);
+    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, accountingEntries, recurringCharges, updatedEntries);
+  };
+
+  // Fonction utilitaire pour obtenir les périodes de récurrence
+  const getRecurringPeriods = (charge: RecurringCharge, start: Date, end: Date): string[] => {
+    const periods: string[] = [];
+    const current = new Date(start);
+
+    while (current <= end) {
+      let shouldInclude = false;
+
+      switch (charge.frequency) {
+        case 'monthly':
+          if (charge.dayOfMonth) {
+            const targetDate = new Date(current.getFullYear(), current.getMonth(), charge.dayOfMonth);
+            if (targetDate >= start && targetDate <= end) {
+              shouldInclude = true;
+            }
+          } else {
+            shouldInclude = true;
+          }
+          break;
+        case 'quarterly':
+          if (charge.quarter) {
+            const quarterStart = new Date(current.getFullYear(), (charge.quarter - 1) * 3, 1);
+            if (quarterStart >= start && quarterStart <= end) {
+              shouldInclude = true;
+            }
+          }
+          break;
+        case 'annual':
+          if (charge.monthOfYear) {
+            const targetDate = new Date(current.getFullYear(), charge.monthOfYear - 1, 1);
+            if (targetDate >= start && targetDate <= end) {
+              shouldInclude = true;
+            }
+          }
+          break;
+      }
+
+      if (shouldInclude) {
+        periods.push(format(current, 'yyyy-MM'));
+      }
+
+      // Passer à la période suivante
+      switch (charge.frequency) {
+        case 'monthly':
+          current.setMonth(current.getMonth() + 1);
+          break;
+        case 'quarterly':
+          current.setMonth(current.getMonth() + 3);
+          break;
+        case 'annual':
+          current.setFullYear(current.getFullYear() + 1);
+          break;
+      }
+    }
+
+    return periods;
+  };
+
+  // Fonction utilitaire pour obtenir la date d'une entrée pour une période
+  const getEntryDateForPeriod = (charge: RecurringCharge, period: string): string => {
+    const [year, month] = period.split('-').map(Number);
+    
+    switch (charge.frequency) {
+      case 'monthly':
+        const day = charge.dayOfMonth || 1;
+        return format(new Date(year, month - 1, day), 'yyyy-MM-dd');
+      case 'quarterly':
+        return format(new Date(year, month - 1, 1), 'yyyy-MM-dd');
+      case 'annual':
+        const annualMonth = charge.monthOfYear || 1;
+        return format(new Date(year, annualMonth - 1, 1), 'yyyy-MM-dd');
+      default:
+        return format(new Date(year, month - 1, 1), 'yyyy-MM-dd');
+    }
+  };
+
   return (
     <ClientContext.Provider value={{
       clients,
@@ -2961,6 +3922,9 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       stockItems,
       stockAlerts,
       stockMovements,
+      accountingEntries,
+      recurringCharges,
+      generatedEntries,
       addClient,
       addPet,
       addConsultation,
@@ -2974,6 +3938,20 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       addAntiparasiticProtocol,
       addStockItem,
       addStockMovement,
+      addAccountingEntry,
+      updateAccountingEntry,
+      deleteAccountingEntry,
+      calculateAutomaticRevenue,
+      calculateAutomaticExpenses,
+      generateAccountingSummary,
+      addRecurringCharge,
+      updateRecurringCharge,
+      deleteRecurringCharge,
+      generateRecurringEntries,
+      confirmGeneratedEntry,
+      cancelGeneratedEntry,
+      resetRecurringChargesToDefault,
+      updateGeneratedEntryPaymentStatus,
       updateClient,
       updatePet,
       updateConsultation,
@@ -3102,6 +4080,84 @@ export interface StockMovement {
   performedBy?: string;
   date: string;
   notes?: string;
+}
+
+// Interfaces pour la gestion comptable
+export interface AccountingEntry {
+  id: number;
+  type: 'revenue' | 'expense';
+  category: 'automatic' | 'manual';
+  frequency: 'monthly' | 'annual' | 'occasional';
+  description: string;
+  amount: number;
+  date: string;
+  reference?: string; // Référence à une consultation, vente, etc.
+  source?: 'consultation' | 'vaccination' | 'antiparasitic' | 'prescription' | 'stock_sale' | 'stock_purchase' | 'salary' | 'rent' | 'tax' | 'insurance' | 'other';
+  sourceId?: number; // ID de la source (consultation, vaccination, etc.)
+  notes?: string;
+  createdAt: string;
+  createdBy?: string;
+}
+
+export interface AccountingSummary {
+  period: string; // "2024-01", "2024-Q1", "2024"
+  totalRevenue: number;
+  totalExpenses: number;
+  netIncome: number;
+  revenueBreakdown: {
+    consultations: number;
+    vaccinations: number;
+    antiparasitics: number;
+    prescriptions: number;
+    stockSales: number;
+    manualEntries: number;
+    recurringCharges: number;
+  };
+  expenseBreakdown: {
+    stockPurchases: number;
+    salaries: number;
+    rent: number;
+    taxes: number;
+    insurance: number;
+    other: number;
+    manualEntries: number;
+    recurringCharges: number;
+  };
+}
+
+// Interface pour les charges récurrentes
+export interface RecurringCharge {
+  id: number;
+  name: string;
+  description: string;
+  amount: number;
+  frequency: 'monthly' | 'annual' | 'quarterly';
+  type: 'revenue' | 'expense';
+  source: 'salary' | 'rent' | 'tax' | 'insurance' | 'other';
+  isActive: boolean;
+  dayOfMonth?: number; // Pour les charges mensuelles (1-31)
+  monthOfYear?: number; // Pour les charges annuelles (1-12)
+  quarter?: number; // Pour les charges trimestrielles (1-4)
+  startDate: string; // Date de début de la récurrence
+  endDate?: string; // Date de fin (optionnel)
+  notes?: string;
+  createdAt: string;
+  lastGenerated?: string; // Dernière date de génération
+}
+
+// Interface pour les entrées générées automatiquement
+export interface GeneratedEntry {
+  id: number;
+  recurringChargeId: number;
+  accountingEntryId?: number; // ID de l'entrée comptable créée
+  period: string; // Période pour laquelle elle a été générée
+  status: 'pending' | 'confirmed' | 'modified' | 'cancelled';
+  generatedDate: string;
+  confirmedDate?: string;
+  modifiedAmount?: number;
+  notes?: string;
+  paymentStatus: 'paid' | 'unpaid' | 'pending'; // Statut de paiement
+  paidDate?: string; // Date du paiement
 }
 
 export const useClients = () => {

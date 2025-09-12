@@ -8,6 +8,7 @@ import { Plus, Search, FileText, Heart, User, Calendar, Pill, Thermometer, Edit,
 import { NewConsultationModal } from "@/components/forms/NewConsultationModal";
 import { ConsultationEditModal } from "@/components/modals/ConsultationEditModal";
 import { ConsultationPrint } from "@/components/ConsultationPrint";
+import NewPrescriptionModal from "@/components/forms/NewPrescriptionModal";
 import { useClients, Consultation } from "@/contexts/ClientContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useToast } from "@/hooks/use-toast";
@@ -25,6 +26,9 @@ const Consultations = () => {
   const [showNewConsultation, setShowNewConsultation] = useState(false);
   const [showEditConsultation, setShowEditConsultation] = useState(false);
   const [selectedConsultation, setSelectedConsultation] = useState<Consultation | null>(null);
+  const [showNewPrescription, setShowNewPrescription] = useState(false);
+  const [prescriptionPetId, setPrescriptionPetId] = useState<number | null>(null);
+  const [prescriptionConsultationId, setPrescriptionConsultationId] = useState<number | null>(null);
 
   const filteredConsultations = consultations.filter(consultation => {
     const matchesSearch = consultation.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -53,6 +57,12 @@ const Consultations = () => {
   const handleEditConsultation = (consultation: Consultation) => {
     setSelectedConsultation(consultation);
     setShowEditConsultation(true);
+  };
+
+  const handleNewPrescription = (consultation: Consultation) => {
+    setPrescriptionPetId(consultation.petId);
+    setPrescriptionConsultationId(consultation.id);
+    setShowNewPrescription(true);
   };
 
   const handleDeleteConsultation = (consultation: Consultation) => {
@@ -268,6 +278,15 @@ const Consultations = () => {
                       </Button>
                       <Button 
                         size="sm" 
+                        variant="default"
+                        onClick={() => handleNewPrescription(consultation)}
+                        className="gap-1"
+                      >
+                        <Pill className="h-3 w-3" />
+                        Prescription
+                      </Button>
+                      <Button 
+                        size="sm" 
                         variant="outline"
                         onClick={() => handleDeleteConsultation(consultation)}
                         className="gap-1 text-red-600 hover:text-red-700"
@@ -342,6 +361,13 @@ const Consultations = () => {
                           </Button>
                           <Button 
                             size="sm" 
+                            variant="default"
+                            onClick={() => handleNewPrescription(consultation)}
+                          >
+                            <Pill className="h-3 w-3" />
+                          </Button>
+                          <Button 
+                            size="sm" 
                             variant="outline"
                             onClick={() => handleDeleteConsultation(consultation)}
                             className="text-red-600 hover:text-red-700"
@@ -369,6 +395,15 @@ const Consultations = () => {
         onOpenChange={setShowEditConsultation}
         consultation={selectedConsultation}
       />
+      
+      {prescriptionPetId && (
+        <NewPrescriptionModal
+          open={showNewPrescription}
+          onOpenChange={setShowNewPrescription}
+          petId={prescriptionPetId}
+          consultationId={prescriptionConsultationId || undefined}
+        />
+      )}
     </div>
   );
 };

@@ -10,7 +10,7 @@ import { useClients } from "@/contexts/ClientContext";
 import { useSettings } from "@/contexts/SettingsContext";
 
 export function HeroSection() {
-  const { clients, pets, consultations } = useClients();
+  const { clients, pets, consultations, vaccinations, antiparasitics, generateAccountingSummary } = useClients();
   const { settings } = useSettings();
   const vets: any[] = JSON.parse(localStorage.getItem('vetpro-veterinarians') || '[]');
   const greeting = vets.length === 1
@@ -24,8 +24,21 @@ export function HeroSection() {
   // Calculer les statistiques en temps réel
   const totalClients = clients.length;
   const totalPets = pets.length;
+  const totalVaccinations = vaccinations.length;
+  const totalAntiparasitics = antiparasitics.length;
   const today = new Date().toISOString().split('T')[0];
   const consultationsToday = consultations.filter(c => c.date === today).length;
+  
+  // Calculer les revenus de ce mois
+  const thisMonth = new Date().getMonth();
+  const thisYear = new Date().getFullYear();
+  const thisMonthStart = new Date(thisYear, thisMonth, 1).toISOString().split('T')[0];
+  const thisMonthEnd = new Date(thisYear, thisMonth + 1, 0).toISOString().split('T')[0];
+  const accountingSummary = generateAccountingSummary(
+    `${thisYear}-${String(thisMonth + 1).padStart(2, '0')}`,
+    thisMonthStart,
+    thisMonthEnd
+  );
   
   return (
     <>
@@ -49,11 +62,13 @@ export function HeroSection() {
                 <Button variant="outline" size="lg" className="gap-2" onClick={() => setShowConsultationModal(true)}><Stethoscope className="h-5 w-5" />Nouvelle Consultation</Button>
               </div>
               {/* Statistiques */}
-              <div className="flex gap-8 pt-8 flex-wrap">
+              <div className="flex gap-6 pt-8 flex-wrap">
                 <div className="text-center"><div className="text-2xl font-bold text-primary">{totalClients}</div><div className="text-sm text-muted-foreground">Clients actifs</div></div>
                 <div className="text-center"><div className="text-2xl font-bold text-secondary">{totalPets}</div><div className="text-sm text-muted-foreground">Animaux suivis</div></div>
                 <div className="text-center"><div className="text-2xl font-bold text-accent">{consultationsToday}</div><div className="text-sm text-muted-foreground">Consultations aujourd'hui</div></div>
-                <div className="text-center"><div className="text-2xl font-bold text-primary">{consultations.length}</div><div className="text-sm text-muted-foreground">Total consultations</div></div>
+                <div className="text-center"><div className="text-2xl font-bold text-blue-600">{totalVaccinations}</div><div className="text-sm text-muted-foreground">Vaccinations</div></div>
+                <div className="text-center"><div className="text-2xl font-bold text-purple-600">{totalAntiparasitics}</div><div className="text-sm text-muted-foreground">Antiparasitaires</div></div>
+                <div className="text-center"><div className="text-2xl font-bold text-emerald-600">{accountingSummary.totalRevenue.toFixed(0)} {settings.currency || '€'}</div><div className="text-sm text-muted-foreground">Revenus ce mois</div></div>
               </div>
             </div>
             {/* Illustration */}

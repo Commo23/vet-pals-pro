@@ -7,11 +7,14 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useClients, AntiparasiticProtocol } from '@/contexts/ClientContext';
+import { useClients, AntiparasiticProtocol, StockItem } from '@/contexts/ClientContext';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useToast } from '@/hooks/use-toast';
 import { format, addDays } from 'date-fns';
-import { Plus } from 'lucide-react';
+import { Plus, Package, CheckCircle, Search, ChevronDown, AlertTriangle } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface NewAntiparasiticModalProps {
   children?: React.ReactNode;
@@ -23,7 +26,7 @@ interface NewAntiparasiticModalProps {
 }
 
 export default function NewAntiparasiticModal({ children, selectedClientId, selectedPetId, open, onOpenChange, editingAntiparasitic }: NewAntiparasiticModalProps) {
-  const { clients, pets, addAntiparasitic, updateAntiparasitic, getAntiparasiticProtocolsBySpecies, addAppointment } = useClients();
+  const { clients, pets, addAntiparasitic, updateAntiparasitic, getAntiparasiticProtocolsBySpecies, addAppointment, stockItems } = useClients();
   const { settings } = useSettings();
   const { toast } = useToast();
   const [internalOpen, setInternalOpen] = useState(false);
@@ -47,6 +50,11 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
   });
   const [selectedProtocols, setSelectedProtocols] = useState<AntiparasiticProtocol[]>([]);
   
+  // États pour la gestion du stock
+  const [openPopover, setOpenPopover] = useState(false);
+  const [manualEntryMode, setManualEntryMode] = useState(false);
+  const [availableAntiparasitics, setAvailableAntiparasitics] = useState<StockItem[]>([]);
+  
   // Protection contre undefined
   const safeSelectedProtocols = selectedProtocols || [];
   const [nextDueDates, setNextDueDates] = useState<Record<string, string>>({});
@@ -55,6 +63,19 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
     if (selectedClientId) setFormData(prev => ({ ...prev, clientId: selectedClientId.toString(), petId: '' }));
     if (selectedPetId) setFormData(prev => ({ ...prev, petId: selectedPetId.toString() }));
   }, [selectedClientId, selectedPetId]);
+
+  // Synchroniser les antiparasitaires disponibles en stock
+  useEffect(() => {
+    const antiparasitics = stockItems
+      .filter(item => 
+        item.category === 'medication' && 
+        item.isActive && 
+        item.currentStock > 0
+      )
+      .sort((a, b) => a.name.localeCompare(b.name));
+    setAvailableAntiparasitics(antiparasitics);
+    console.log('Antiparasitaires disponibles mis à jour:', antiparasitics.length, 'items');
+  }, [stockItems]);
 
   // Pré-remplir le formulaire pour l'édition
   useEffect(() => {
@@ -101,6 +122,35 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
         pets.find(p => p.id === parseInt(formData.petId))?.type || ''
       )
     : [];
+
+  // Fonction pour sélectionner un antiparasitaire depuis le stock
+  const selectAntiparasiticFromStock = (stockItem: StockItem) => {
+    setFormData(prev => ({
+      ...prev,
+      productName: stockItem.name,
+      manufacturer: stockItem.manufacturer || prev.manufacturer,
+      cost: stockItem.sellingPrice.toString()
+    }));
+    setOpenPopover(false);
+    setManualEntryMode(false);
+  };
+
+  // Fonction pour activer la saisie manuelle
+  const enableManualEntry = () => {
+    setManualEntryMode(true);
+    setOpenPopover(false);
+  };
+
+  // Fonction pour revenir au mode sélection
+  const enableSelectionMode = () => {
+    setManualEntryMode(false);
+    setFormData(prev => ({
+      ...prev,
+      productName: '',
+      manufacturer: '',
+      cost: ''
+    }));
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -260,19 +310,19 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
     // Reset and close
     setSelectedProtocols([]);
     setFormData({ 
-      clientId: selectedClientId?.toString() || '',
-      petId: selectedPetId?.toString() || '',
-      dateGiven: format(new Date(), 'yyyy-MM-dd'),
-      nextDueDate: '',
-      dosage: '',
-      administrationRoute: '',
-      veterinarian: '',
-      notes: '',
-      batchNumber: '',
-      manufacturer: '',
-      weight: '',
-      cost: '',
-      sideEffects: ''
+      clientId: selectedClientId?.toString() || '', 
+      petId: selectedPetId?.toString() || '', 
+      dateGiven: format(new Date(), 'yyyy-MM-dd'), 
+      nextDueDate: '', 
+      dosage: '', 
+      administrationRoute: '', 
+      veterinarian: '', 
+      notes: '', 
+      batchNumber: '', 
+      manufacturer: '', 
+      weight: '', 
+      cost: '', 
+      sideEffects: '' 
     });
     setModalOpen(false);
   };
@@ -280,9 +330,9 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
   return (
     <Dialog open={modalOpen} onOpenChange={setModalOpen}>
       {!editingAntiparasitic && (
-        <DialogTrigger asChild>
-          {children || <Button className="gap-2"><Plus className="h-4 w-4" />Nouveau traitement</Button>}
-        </DialogTrigger>
+      <DialogTrigger asChild>
+        {children || <Button className="gap-2"><Plus className="h-4 w-4" />Nouveau traitement</Button>}
+      </DialogTrigger>
       )}
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -365,8 +415,128 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label>Produit</Label>
-                <Input value={formData.notes} onChange={e => setFormData(prev => ({ ...prev, notes: e.target.value }))} placeholder="Nom du produit" />
+                <div className="flex items-center gap-3 mb-2">
+                  <Label>Produit antiparasitaire</Label>
+                  <Badge variant="outline" className="text-xs">
+                    {availableAntiparasitics.length} antiparasitaires en stock
+                  </Badge>
+                </div>
+                
+                {manualEntryMode ? (
+                  <div className="space-y-2">
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <Search className="h-4 w-4 text-blue-600" />
+                          <span className="text-sm font-medium text-blue-800">Saisie manuelle</span>
+                        </div>
+                        <Button type="button" variant="outline" size="sm" onClick={enableSelectionMode} className="text-xs">
+                          Changer
+                        </Button>
+                      </div>
+                      <Input
+                        value={formData.productName}
+                        onChange={(e) => setFormData(prev => ({ ...prev, productName: e.target.value }))}
+                        placeholder="Nom du produit antiparasitaire (non disponible en stock)"
+                        className="bg-white"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <Popover open={openPopover} onOpenChange={setOpenPopover}>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" role="combobox" aria-expanded={openPopover} className="flex-1 justify-between">
+                            {formData.productName || "Sélectionner un antiparasitaire..."}
+                            <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[400px] p-0">
+                          <Command>
+                            <CommandInput placeholder="Rechercher un antiparasitaire..." />
+                            <CommandList>
+                              <CommandEmpty>Aucun antiparasitaire trouvé.</CommandEmpty>
+                              <CommandGroup>
+                                {availableAntiparasitics.map((stockItem) => (
+                                  <CommandItem
+                                    key={stockItem.id}
+                                    value={stockItem.name}
+                                    onSelect={() => selectAntiparasiticFromStock(stockItem)}
+                                    className="flex flex-col items-start gap-1 p-3"
+                                  >
+                                    <div className="flex items-center justify-between w-full">
+                                      <div className="flex items-center gap-2">
+                                        <Package className="h-4 w-4 text-blue-600" />
+                                        <span className="font-medium">{stockItem.name}</span>
+                                      </div>
+                                      <Badge variant={stockItem.currentStock >= 5 ? "default" : "destructive"} className="ml-2">
+                                        {stockItem.currentStock} en stock
+                                      </Badge>
+                                    </div>
+                                    <div className="flex items-center gap-4 text-sm text-gray-600">
+                                      {stockItem.manufacturer && (<span>Fabricant: {stockItem.manufacturer}</span>)}
+                                      <span>Prix: {stockItem.sellingPrice.toFixed(2)} {settings.currency}</span>
+                                    </div>
+                                  </CommandItem>
+                                ))}
+                                <CommandItem onSelect={enableManualEntry}>
+                                  <div className="flex items-center gap-2 text-blue-600 p-2">
+                                    <Search className="h-4 w-4" />
+                                    <div>
+                                      <span className="font-medium">Saisie manuelle</span>
+                                      <p className="text-sm text-gray-500">Antiparasitaire non disponible en stock</p>
+                                    </div>
+                                  </div>
+                                </CommandItem>
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                      {formData.productName && (
+                        <Button type="button" variant="outline" size="sm" onClick={enableManualEntry} className="px-3" title="Passer en saisie manuelle">
+                          <Search className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                    
+                    {/* Badge de statut du stock */}
+                    {formData.productName && (
+                      <div className="flex items-center gap-2">
+                        {(() => {
+                          const stockItem = availableAntiparasitics.find(item => 
+                            item.name.toLowerCase() === formData.productName.toLowerCase()
+                          );
+                          if (stockItem) {
+                            if (stockItem.currentStock >= 1) {
+                              return (
+                                <Badge variant="default" className="bg-green-100 text-green-800">
+                                  <CheckCircle className="h-3 w-3 mr-1" />
+                                  En stock ({stockItem.currentStock})
+                                </Badge>
+                              );
+                            } else {
+                              return (
+                                <Badge variant="destructive">
+                                  <AlertTriangle className="h-3 w-3 mr-1" />
+                                  Stock insuffisant
+                                </Badge>
+                              );
+                            }
+                          } else {
+                            return (
+                              <Badge variant="secondary">
+                                <Search className="h-3 w-3 mr-1" />
+                                Non en stock
+                              </Badge>
+                            );
+                          }
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div>
                 <Label>Type</Label>
@@ -455,6 +625,58 @@ export default function NewAntiparasiticModal({ children, selectedClientId, sele
             <Label>Effets indésirables</Label>
             <Input value={formData.sideEffects} onChange={e=>setFormData(prev=>({...prev,sideEffects:e.target.value}))} placeholder="Effets indésirables" />
           </div>
+
+          {/* Résumé du stock */}
+          {formData.productName && (
+            <Card className="mt-4">
+              <CardHeader>
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Package className="h-4 w-4" />
+                  Résumé du stock
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  const stockItem = availableAntiparasitics.find(item => 
+                    item.name.toLowerCase() === formData.productName.toLowerCase()
+                  );
+                  if (stockItem) {
+                    return (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium">{stockItem.name}</span>
+                          <Badge variant={stockItem.currentStock >= 1 ? "default" : "destructive"}>
+                            {stockItem.currentStock} en stock
+                          </Badge>
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          <div>Fabricant: {stockItem.manufacturer || 'Non spécifié'}</div>
+                          <div>Prix de vente: {stockItem.sellingPrice.toFixed(2)} {settings.currency}</div>
+                          <div>Stock minimum: {stockItem.minimumStock}</div>
+                          {stockItem.currentStock <= stockItem.minimumStock && (
+                            <div className="text-orange-600 font-medium mt-1">
+                              ⚠️ Stock bas - Réapprovisionnement recommandé
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <div className="text-sm text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <Search className="h-4 w-4" />
+                          <span>Antiparasitaire non disponible en stock</span>
+                        </div>
+                        <div className="mt-1">L'antiparasitaire sera administré sans impact sur le stock.</div>
+                      </div>
+                    );
+                  }
+                })()}
+              </CardContent>
+            </Card>
+          )}
+
           <div className="flex justify-end gap-2 pt-4">
             <Button variant="outline" type="button" onClick={()=>onOpenChange ? onOpenChange(false) : setInternalOpen(false)}>Annuler</Button>
             <Button type="submit">Ajouter</Button>

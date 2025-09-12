@@ -28,6 +28,7 @@ import {
   Heart,
   Users,
   PawPrint,
+  Package,
   FileText,
   Eye,
   Edit,
@@ -493,6 +494,44 @@ export default function Antiparasites() {
                             <span className="font-medium">{antiparasite.cost} {settings.currency}</span>
                           </div>
                         )}
+
+                        {/* Statut du stock */}
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">Stock:</span>
+                          {(() => {
+                            if (antiparasite.isInStock === true) {
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <Package className="h-4 w-4 text-green-600" />
+                                  <Badge variant="default" className="bg-green-100 text-green-800 text-xs">
+                                    En stock
+                                  </Badge>
+                                  {antiparasite.stockQuantity && (
+                                    <span className="text-xs text-muted-foreground">
+                                      ({antiparasite.stockQuantity})
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            } else if (antiparasite.isInStock === false) {
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <Package className="h-4 w-4 text-gray-400" />
+                                  <Badge variant="secondary" className="text-xs">
+                                    Non en stock
+                                  </Badge>
+                                </div>
+                              );
+                            } else {
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <Package className="h-4 w-4 text-gray-400" />
+                                  <span className="text-xs text-muted-foreground">N/A</span>
+                                </div>
+                              );
+                            }
+                          })()}
+                        </div>
                       </div>
                       
                       <div className="flex gap-2 pt-2">
@@ -534,6 +573,7 @@ export default function Antiparasites() {
                       <TableHead>Date donnée</TableHead>
                       <TableHead>Prochain rappel</TableHead>
                       <TableHead>Statut</TableHead>
+                      <TableHead>Stock</TableHead>
                       <TableHead>Vétérinaire</TableHead>
                       <TableHead>Coût</TableHead>
                       <TableHead>Actions</TableHead>
@@ -585,6 +625,41 @@ export default function Antiparasites() {
                                antiparasite.status === 'overdue' ? 'En retard' : 'Manqué'}
                             </span>
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {(() => {
+                            if (antiparasite.isInStock === true) {
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <Package className="h-4 w-4 text-green-600" />
+                                  <Badge variant="default" className="bg-green-100 text-green-800 text-xs">
+                                    En stock
+                                  </Badge>
+                                  {antiparasite.stockQuantity && (
+                                    <span className="text-xs text-muted-foreground">
+                                      ({antiparasite.stockQuantity})
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            } else if (antiparasite.isInStock === false) {
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <Package className="h-4 w-4 text-gray-400" />
+                                  <Badge variant="secondary" className="text-xs">
+                                    Non en stock
+                                  </Badge>
+                                </div>
+                              );
+                            } else {
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <Package className="h-4 w-4 text-gray-400" />
+                                  <span className="text-xs text-muted-foreground">N/A</span>
+                                </div>
+                              );
+                            }
+                          })()}
                         </TableCell>
                         <TableCell
                           className="cursor-pointer"

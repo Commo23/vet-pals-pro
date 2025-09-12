@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "react-router-dom";
+import { useState } from "react";
 import {
   Users,
   Heart,
@@ -11,54 +12,145 @@ import {
   Syringe,
   Bug,
   Package,
-  Cog
+  Cog,
+  Calculator,
+  Menu,
+  X
 } from "lucide-react";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
-const navItems = [
+// Navigation principale (toujours visible)
+const primaryNavItems = [
   { icon: Home, label: "Dashboard", path: "/dashboard" },
   { icon: Users, label: "Clients", path: "/clients" },
   { icon: Heart, label: "Animaux", path: "/pets" },
-  { icon: Calendar, label: "Rendez-vous", path: "/appointments" },
+  { icon: Calendar, label: "RDV", path: "/appointments" },
   { icon: FileText, label: "Consultations", path: "/consultations" },
   { icon: Syringe, label: "Vaccinations", path: "/vaccinations" },
   { icon: Bug, label: "Antiparasites", path: "/antiparasites" },
-  { icon: Package, label: "Stock", path: "/stock" },
   { icon: BarChart3, label: "Historiques", path: "/history" },
-  { icon: Tractor, label: "Farm Mgmt", path: "/farm" },
+  { icon: Tractor, label: "Farm Mgmt", path: "/farm" }
+];
+
+// Navigation secondaire (dans le menu déroulant)
+const secondaryNavItems = [
+  { icon: Package, label: "Stock", path: "/stock" },
+  { icon: Calculator, label: "Comptabilité", path: "/accounting" },
   { icon: Cog, label: "Paramètres", path: "/settings" }
 ];
 
+// Tous les éléments pour la navigation mobile
+const allNavItems = [...primaryNavItems, ...secondaryNavItems];
+
 export function VetNavigation() {
   const location = useLocation();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
     <nav className="bg-card border-b shadow-card">
-      <div className="container mx-auto px-6 py-4">
-        <div className="flex items-center gap-8">
-          <Link to="/dashboard" className="flex items-center gap-2">
-            <Heart className="h-8 w-8 text-primary" />
-            <h1 className="text-2xl font-bold gradient-primary bg-clip-text text-transparent">
-              VetPro CRM
-            </h1>
-          </Link>
+      <div className="container mx-auto px-4 py-3">
+        <div className="flex items-center justify-between">
+          {/* Logo et Toggle Thème */}
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <Link to="/dashboard" className="flex items-center gap-2">
+              <Heart className="h-7 w-7 text-primary" />
+              <h1 className="text-xl font-bold gradient-primary bg-clip-text text-transparent hidden sm:block">
+                VetPro CRM
+              </h1>
+              <h1 className="text-lg font-bold gradient-primary bg-clip-text text-transparent sm:hidden">
+                VetPro
+              </h1>
+            </Link>
+            <ThemeToggle />
+          </div>
 
-          <div className="flex gap-2 ml-auto">
-            {navItems.map((item) => (
+          {/* Navigation principale - Desktop */}
+          <div className="hidden lg:flex items-center gap-1">
+            {primaryNavItems.map((item) => (
               <Button
                 key={item.path}
                 variant={location.pathname === item.path ? "default" : "ghost"}
                 size="sm"
-                className="gap-2 transition-all hover:medical-glow"
+                className="gap-1 px-3 transition-all hover:medical-glow"
                 asChild
               >
                 <Link to={item.path}>
                   <item.icon className="h-4 w-4" />
-                  {item.label}
+                  <span className="hidden xl:inline">{item.label}</span>
                 </Link>
               </Button>
             ))}
+            
+            {/* Menu déroulant pour les éléments secondaires */}
+            <div className="relative group">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1 px-3 transition-all hover:medical-glow"
+              >
+                <Menu className="h-4 w-4" />
+                <span className="hidden xl:inline">Plus</span>
+              </Button>
+              
+              {/* Menu déroulant */}
+              <div className="absolute right-0 top-full mt-1 w-40 bg-card border rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                <div className="py-1">
+                  {secondaryNavItems.map((item) => (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      className={`flex items-center gap-2 px-4 py-2 text-sm transition-colors hover:bg-muted ${
+                        location.pathname === item.path ? 'bg-primary text-primary-foreground' : ''
+                      }`}
+                    >
+                      <item.icon className="h-4 w-4" />
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Menu mobile */}
+          <div className="lg:hidden">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="gap-2"
+            >
+              {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </Button>
           </div>
         </div>
+
+        {/* Menu mobile déroulant */}
+        {isMobileMenuOpen && (
+          <div className="lg:hidden mt-3 pt-3 border-t">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium text-muted-foreground">Thème</span>
+              <ThemeToggle />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {allNavItems.map((item) => (
+                <Button
+                  key={item.path}
+                  variant={location.pathname === item.path ? "default" : "ghost"}
+                  size="sm"
+                  className="gap-2 justify-start"
+                  asChild
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <Link to={item.path}>
+                    <item.icon className="h-4 w-4" />
+                    {item.label}
+                  </Link>
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </nav>
   );

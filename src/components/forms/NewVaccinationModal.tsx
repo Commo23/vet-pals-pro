@@ -7,12 +7,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useClients } from '@/contexts/ClientContext';
+import { useClients, StockItem } from '@/contexts/ClientContext';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useToast } from "@/hooks/use-toast";
-import { CalendarIcon, Plus, Syringe, Shield, AlertTriangle, Info } from 'lucide-react';
+import { CalendarIcon, Plus, Syringe, Shield, AlertTriangle, Info, Package, CheckCircle, Search, ChevronDown } from 'lucide-react';
 import { format, addDays, addYears } from 'date-fns';
 import { Checkbox } from "@/components/ui/checkbox";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 // Protocoles vaccinaux prédéfinis
 const vaccinationProtocols = {
@@ -82,7 +84,7 @@ export default function NewVaccinationModal({
   onOpenChange,
   editingVaccination
 }: NewVaccinationModalProps) {
-  const { clients, pets, addVaccination, updateVaccination, getVaccinationProtocolsBySpecies, calculateDueDateFromProtocol } = useClients();
+  const { clients, pets, addVaccination, updateVaccination, getVaccinationProtocolsBySpecies, calculateDueDateFromProtocol, stockItems } = useClients();
   const { settings } = useSettings();
   
   const { toast } = useToast();
@@ -90,6 +92,11 @@ export default function NewVaccinationModal({
   const modalOpen = open !== undefined ? open : internalOpen;
   const setModalOpen = onOpenChange || setInternalOpen;
   const [showProtocols, setShowProtocols] = useState(false);
+  
+  // États pour la gestion du stock
+  const [openPopover, setOpenPopover] = useState(false);
+  const [manualEntryMode, setManualEntryMode] = useState(false);
+  const [availableVaccines, setAvailableVaccines] = useState<StockItem[]>([]);
   
   const [formData, setFormData] = useState({
     clientId: selectedClientId || '',
@@ -123,6 +130,19 @@ export default function NewVaccinationModal({
       setFormData(prev => ({ ...prev, petId: selectedPetId.toString() }));
     }
   }, [selectedClientId, selectedPetId]);
+
+  // Synchroniser les vaccins disponibles en stock
+  useEffect(() => {
+    const vaccines = stockItems
+      .filter(item => 
+        item.category === 'vaccine' && 
+        item.isActive && 
+        item.currentStock > 0
+      )
+      .sort((a, b) => a.name.localeCompare(b.name));
+    setAvailableVaccines(vaccines);
+    console.log('Vaccins disponibles mis à jour:', vaccines.length, 'items');
+  }, [stockItems]);
 
   // Pré-remplir le formulaire pour l'édition
   useEffect(() => {
@@ -181,6 +201,35 @@ export default function NewVaccinationModal({
     }
   }, [safeSelectedProtocols, formData.dateGiven]);
 
+  // Fonction pour sélectionner un vaccin depuis le stock
+  const selectVaccineFromStock = (stockItem: StockItem) => {
+    setFormData(prev => ({
+      ...prev,
+      vaccineName: stockItem.name,
+      manufacturer: stockItem.manufacturer || prev.manufacturer,
+      cost: stockItem.sellingPrice.toString()
+    }));
+    setOpenPopover(false);
+    setManualEntryMode(false);
+  };
+
+  // Fonction pour activer la saisie manuelle
+  const enableManualEntry = () => {
+    setManualEntryMode(true);
+    setOpenPopover(false);
+  };
+
+  // Fonction pour revenir au mode sélection
+  const enableSelectionMode = () => {
+    setManualEntryMode(false);
+    setFormData(prev => ({
+      ...prev,
+      vaccineName: '',
+      manufacturer: '',
+      cost: ''
+    }));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -197,13 +246,13 @@ export default function NewVaccinationModal({
       }
     } else {
       // En mode création, validation complète
-      if (!formData.clientId || !formData.petId || (safeSelectedProtocols.length === 0 && !formData.vaccineName)) {
-        toast({
-          title: "Erreur",
-          description: "Veuillez remplir tous les champs obligatoires",
-          variant: "destructive"
-        });
-        return;
+    if (!formData.clientId || !formData.petId || (safeSelectedProtocols.length === 0 && !formData.vaccineName)) {
+      toast({
+        title: "Erreur",
+        description: "Veuillez remplir tous les champs obligatoires",
+        variant: "destructive"
+      });
+      return;
       }
     }
 
@@ -327,34 +376,34 @@ export default function NewVaccinationModal({
       });
     } else {
       // Mode création
-      addVaccination({
-        clientId: parseInt(formData.clientId as string),
-        clientName: client.name,
-        petId: parseInt(formData.petId as string),
-        petName: pet.name,
-        vaccineName: formData.vaccineName,
-        vaccineType: formData.vaccineType as 'core' | 'non-core' | 'rabies' | 'custom',
+    addVaccination({
+      clientId: parseInt(formData.clientId as string),
+      clientName: client.name,
+      petId: parseInt(formData.petId as string),
+      petName: pet.name,
+      vaccineName: formData.vaccineName,
+      vaccineType: formData.vaccineType as 'core' | 'non-core' | 'rabies' | 'custom',
         vaccinationCategory: isReminder ? 'reminder' : 'new', // Distinction nouveau/rappel
-        dateGiven: formData.dateGiven,
+      dateGiven: formData.dateGiven,
         nextDueDate: lastReminderDate, // Dernière date de rappel (généralement annuelle)
         calculatedDueDate: calculatedDueDate, // Date suggérée par le protocole
-        batchNumber: formData.batchNumber,
-        veterinarian: formData.veterinarian,
-        notes: formData.notes,
-        status: 'completed',
-        cost: formData.cost,
-        location: formData.location as any,
-        manufacturer: formData.manufacturer,
-        expirationDate: formData.expirationDate,
+      batchNumber: formData.batchNumber,
+      veterinarian: formData.veterinarian,
+      notes: formData.notes,
+      status: 'completed',
+      cost: formData.cost,
+      location: formData.location as any,
+      manufacturer: formData.manufacturer,
+      expirationDate: formData.expirationDate,
         adverseReactions: formData.adverseReactions,
         originalVaccinationId: isReminder ? originalVaccinationId : undefined,
         isReminder: isReminder
-      });
+    });
 
-      toast({
-        title: "Vaccination enregistrée",
-        description: `Vaccination ${formData.vaccineName} ajoutée pour ${pet.name}`,
-      });
+    toast({
+      title: "Vaccination enregistrée",
+      description: `Vaccination ${formData.vaccineName} ajoutée pour ${pet.name}`,
+    });
     }
 
     // Reset form
@@ -532,14 +581,129 @@ export default function NewVaccinationModal({
                 // Nom et type du vaccin pour sélection unique
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="vaccineName">Nom du vaccin {!editingVaccination && '*'}</Label>
+                    <div className="flex items-center gap-3 mb-2">
+                      <Label htmlFor="vaccineName">Nom du vaccin {!editingVaccination && '*'}</Label>
+                      <Badge variant="outline" className="text-xs">
+                        {availableVaccines.length} vaccins en stock
+                      </Badge>
+                    </div>
+                    
+                    {manualEntryMode ? (
+                      <div className="space-y-2">
+                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <Search className="h-4 w-4 text-blue-600" />
+                              <span className="text-sm font-medium text-blue-800">Saisie manuelle</span>
+                            </div>
+                            <Button type="button" variant="outline" size="sm" onClick={enableSelectionMode} className="text-xs">
+                              Changer
+                            </Button>
+                          </div>
                     <Input
-                      id="vaccineName"
                       value={formData.vaccineName}
                       onChange={(e) => setFormData(prev => ({ ...prev, vaccineName: e.target.value }))}
-                      placeholder="Ex: DHPP, Rage, FVRCP..."
-                      required={!editingVaccination}
-                    />
+                            placeholder="Nom du vaccin (non disponible en stock)"
+                            className="bg-white"
+                            required={!editingVaccination}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <Popover open={openPopover} onOpenChange={setOpenPopover}>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" role="combobox" aria-expanded={openPopover} className="flex-1 justify-between">
+                                {formData.vaccineName || "Sélectionner un vaccin..."}
+                                <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[400px] p-0">
+                              <Command>
+                                <CommandInput placeholder="Rechercher un vaccin..." />
+                                <CommandList>
+                                  <CommandEmpty>Aucun vaccin trouvé.</CommandEmpty>
+                                  <CommandGroup>
+                                    {availableVaccines.map((stockItem) => (
+                                      <CommandItem
+                                        key={stockItem.id}
+                                        value={stockItem.name}
+                                        onSelect={() => selectVaccineFromStock(stockItem)}
+                                        className="flex flex-col items-start gap-1 p-3"
+                                      >
+                                        <div className="flex items-center justify-between w-full">
+                                          <div className="flex items-center gap-2">
+                                            <Package className="h-4 w-4 text-green-600" />
+                                            <span className="font-medium">{stockItem.name}</span>
+                                          </div>
+                                          <Badge variant={stockItem.currentStock >= 5 ? "default" : "destructive"} className="ml-2">
+                                            {stockItem.currentStock} en stock
+                                          </Badge>
+                                        </div>
+                                        <div className="flex items-center gap-4 text-sm text-gray-600">
+                                          {stockItem.manufacturer && (<span>Fabricant: {stockItem.manufacturer}</span>)}
+                                          <span>Prix: {stockItem.sellingPrice.toFixed(2)} {settings.currency}</span>
+                                        </div>
+                                      </CommandItem>
+                                    ))}
+                                    <CommandItem onSelect={enableManualEntry}>
+                                      <div className="flex items-center gap-2 text-blue-600 p-2">
+                                        <Search className="h-4 w-4" />
+                                        <div>
+                                          <span className="font-medium">Saisie manuelle</span>
+                                          <p className="text-sm text-gray-500">Vaccin non disponible en stock</p>
+                                        </div>
+                                      </div>
+                                    </CommandItem>
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
+                          {formData.vaccineName && (
+                            <Button type="button" variant="outline" size="sm" onClick={enableManualEntry} className="px-3" title="Passer en saisie manuelle">
+                              <Search className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                        
+                        {/* Badge de statut du stock */}
+                        {formData.vaccineName && (
+                          <div className="flex items-center gap-2">
+                            {(() => {
+                              const stockItem = availableVaccines.find(item => 
+                                item.name.toLowerCase() === formData.vaccineName.toLowerCase()
+                              );
+                              if (stockItem) {
+                                if (stockItem.currentStock >= 1) {
+                                  return (
+                                    <Badge variant="default" className="bg-green-100 text-green-800">
+                                      <CheckCircle className="h-3 w-3 mr-1" />
+                                      En stock ({stockItem.currentStock})
+                                    </Badge>
+                                  );
+                                } else {
+                                  return (
+                                    <Badge variant="destructive">
+                                      <AlertTriangle className="h-3 w-3 mr-1" />
+                                      Stock insuffisant
+                                    </Badge>
+                                  );
+                                }
+                              } else {
+                                return (
+                                  <Badge variant="secondary">
+                                    <Search className="h-3 w-3 mr-1" />
+                                    Non en stock
+                                  </Badge>
+                                );
+                              }
+                            })()}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <Label htmlFor="vaccineType">Type de vaccin</Label>
@@ -627,11 +791,11 @@ export default function NewVaccinationModal({
                       {(() => {
                         console.log('Vétérinaires disponibles dans le formulaire:', settings.veterinarians);
                         return settings.veterinarians
-                          .filter(vet => vet.isActive)
-                          .map(vet => (
-                            <SelectItem key={vet.id} value={vet.name}>
-                              {vet.name}
-                            </SelectItem>
+                        .filter(vet => vet.isActive)
+                        .map(vet => (
+                          <SelectItem key={vet.id} value={vet.name}>
+                            {vet.name}
+                          </SelectItem>
                           ));
                       })()}
                     </SelectContent>
@@ -723,6 +887,57 @@ export default function NewVaccinationModal({
                   rows={2}
                 />
               </div>
+
+              {/* Résumé du stock */}
+              {formData.vaccineName && (
+                <Card className="mt-4">
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Package className="h-4 w-4" />
+                      Résumé du stock
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {(() => {
+                      const stockItem = availableVaccines.find(item => 
+                        item.name.toLowerCase() === formData.vaccineName.toLowerCase()
+                      );
+                      if (stockItem) {
+                        return (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium">{stockItem.name}</span>
+                              <Badge variant={stockItem.currentStock >= 1 ? "default" : "destructive"}>
+                                {stockItem.currentStock} en stock
+                              </Badge>
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              <div>Fabricant: {stockItem.manufacturer || 'Non spécifié'}</div>
+                              <div>Prix de vente: {stockItem.sellingPrice.toFixed(2)} {settings.currency}</div>
+                              <div>Stock minimum: {stockItem.minimumStock}</div>
+                              {stockItem.currentStock <= stockItem.minimumStock && (
+                                <div className="text-orange-600 font-medium mt-1">
+                                  ⚠️ Stock bas - Réapprovisionnement recommandé
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      } else {
+                        return (
+                          <div className="text-sm text-muted-foreground">
+                            <div className="flex items-center gap-2">
+                              <Search className="h-4 w-4" />
+                              <span>Vaccin non disponible en stock</span>
+                            </div>
+                            <div className="mt-1">Le vaccin sera administré sans impact sur le stock.</div>
+                          </div>
+                        );
+                      }
+                    })()}
+                  </CardContent>
+                </Card>
+              )}
 
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setOpen(false)}>

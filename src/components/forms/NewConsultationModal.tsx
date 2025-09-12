@@ -9,7 +9,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useClients } from "@/contexts/ClientContext";
 import { NewClientModal } from "./NewClientModal";
 import { NewPetModal } from "./NewPetModal";
-import { Plus, User, Heart } from "lucide-react";
+import { NewPrescriptionModal } from "./NewPrescriptionModal";
+import { Plus, User, Heart, Pill } from "lucide-react";
 import { useSettings } from "@/contexts/SettingsContext"; // Added for dynamic currency
 
 interface NewConsultationModalProps {
@@ -23,6 +24,7 @@ export function NewConsultationModal({ open, onOpenChange }: NewConsultationModa
   const { settings } = useSettings(); // Destructure currency for cost label
   const [showClientModal, setShowClientModal] = useState(false);
   const [showPetModal, setShowPetModal] = useState(false);
+  const [showPrescriptionModal, setShowPrescriptionModal] = useState(false);
   
   const [formData, setFormData] = useState({
     clientId: 0,
@@ -35,9 +37,8 @@ export function NewConsultationModal({ open, onOpenChange }: NewConsultationModa
     symptoms: "",
     diagnosis: "",
     treatment: "",
-    medications: "",
     followUp: "",
-    cost: "",
+    cost: settings.defaultConsultationPrice.toString(),
     notes: "",
     photos: [] as string[] // Added photos array
   });
@@ -47,6 +48,13 @@ export function NewConsultationModal({ open, onOpenChange }: NewConsultationModa
 
   // Get today's date in YYYY-MM-DD format for default date
   const today = new Date().toISOString().split('T')[0];
+
+  // Mettre à jour le prix par défaut quand les paramètres changent
+  useEffect(() => {
+    if (settings.defaultConsultationPrice && !formData.cost) {
+      setFormData(prev => ({ ...prev, cost: settings.defaultConsultationPrice.toString() }));
+    }
+  }, [settings.defaultConsultationPrice, formData.cost]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData(prev => ({
@@ -106,7 +114,7 @@ export function NewConsultationModal({ open, onOpenChange }: NewConsultationModa
       symptoms: formData.symptoms,
       diagnosis: formData.diagnosis,
       treatment: formData.treatment,
-      medications: formData.medications,
+      medications: "", // Supprimé du formulaire
       followUp: formData.followUp,
       cost: formData.cost,
       notes: formData.notes,
@@ -130,7 +138,6 @@ export function NewConsultationModal({ open, onOpenChange }: NewConsultationModa
       symptoms: "",
       diagnosis: "",
       treatment: "",
-      medications: "",
       followUp: "",
       cost: "",
       notes: "",
@@ -154,7 +161,6 @@ export function NewConsultationModal({ open, onOpenChange }: NewConsultationModa
         symptoms: "",
         diagnosis: "",
         treatment: "",
-        medications: "",
         followUp: "",
         cost: "",
         notes: "",
@@ -308,15 +314,27 @@ export function NewConsultationModal({ open, onOpenChange }: NewConsultationModa
               />
             </div>
             
+            {/* Section pour créer une prescription */}
             <div className="space-y-2">
-              <Label htmlFor="medications">Médicaments prescrits</Label>
-              <Textarea
-                id="medications"
-                value={formData.medications}
-                onChange={handleChange}
-                placeholder="Liste des médicaments avec posologie..."
-                rows={3}
-              />
+              <Label>Prescription</Label>
+              <div className="flex items-center gap-2 p-4 border rounded-lg bg-muted/30">
+                <Pill className="h-5 w-5 text-primary" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium">Créer une prescription</p>
+                  <p className="text-xs text-muted-foreground">Gérez les médicaments prescrits de manière séparée</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowPrescriptionModal(true)}
+                  disabled={!formData.petId}
+                  className="gap-2"
+                >
+                  <Pill className="h-4 w-4" />
+                  Nouvelle Prescription
+                </Button>
+              </div>
             </div>
             
             <div className="grid grid-cols-2 gap-4">
@@ -411,6 +429,13 @@ export function NewConsultationModal({ open, onOpenChange }: NewConsultationModa
       <NewPetModal 
         open={showPetModal} 
         onOpenChange={setShowPetModal} 
+      />
+      
+      <NewPrescriptionModal 
+        open={showPrescriptionModal} 
+        onOpenChange={setShowPrescriptionModal}
+        petId={formData.petId}
+        consultationId={0} // Pas de consultation ID car on est en train de créer la consultation
       />
     </>
   );

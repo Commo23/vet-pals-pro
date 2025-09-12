@@ -67,6 +67,15 @@ export default function Stock() {
   const { settings } = useSettings();
   const { toast } = useToast();
   
+  // Debug pour vérifier les mises à jour
+  React.useEffect(() => {
+    console.log('Stock mis à jour:', {
+      items: stockItems.length,
+      movements: stockMovements.length,
+      lastMovement: stockMovements[stockMovements.length - 1]
+    });
+  }, [stockItems, stockMovements]);
+  
   // États pour les modales
   const [showNewItemModal, setShowNewItemModal] = useState(false);
   const [showMovementModal, setShowMovementModal] = useState(false);
@@ -335,7 +344,7 @@ export default function Stock() {
               manufacturer: row['Fabricant'] || '',
               batchNumber: row['Numéro de lot'] || '',
               dosage: row['Dosage'] || '',
-              unit: row['Unité'],
+              unit: row['Unité'] as any,
               currentStock: parseInt(row['Stock actuel']) || 0,
               minimumStock: parseInt(row['Stock minimum']) || 0,
               purchasePrice: parseFloat(row['Prix d\'achat']) || 0,
@@ -347,8 +356,8 @@ export default function Stock() {
               notes: row['Notes'] || '',
               barcode: row['Code-barres'] || '',
               sku: row['SKU'] || '',
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
+              lastUpdated: new Date().toISOString(),
+              isActive: true
             };
 
             importedItems.push(newItem);
@@ -703,11 +712,18 @@ export default function Stock() {
                           <div className="text-sm text-muted-foreground">
                             Min: {item.minimumStock}
                           </div>
-                          {isLowStock && (
-                            <Badge variant="destructive" className="text-xs">
-                              Stock bas
-                            </Badge>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {isLowStock && (
+                              <Badge variant="destructive" className="text-xs">
+                                Stock bas
+                              </Badge>
+                            )}
+                            {item.lastUpdated && new Date(item.lastUpdated).getTime() > Date.now() - 24 * 60 * 60 * 1000 && (
+                              <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
+                                Mis à jour
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                       </TableCell>
                       
@@ -877,6 +893,9 @@ export default function Stock() {
             <Clock className="h-5 w-5" />
             Historique des Mouvements ({stockMovements.length})
           </CardTitle>
+          <div className="text-sm text-muted-foreground">
+            Derniers mouvements de stock (prescriptions, achats, ajustements)
+          </div>
         </CardHeader>
         <CardContent>
           {stockMovements.length === 0 ? (
@@ -892,7 +911,11 @@ export default function Stock() {
                 .map((movement) => {
                   const movementTypeConfig = {
                     in: { label: 'Entrée', color: 'text-green-600', icon: '↗️' },
-                    out: { label: 'Sortie', color: 'text-red-600', icon: '↘️' },
+                    out: { 
+                      label: movement.reason === 'Prescription médicale' ? 'Prescription' : 'Sortie', 
+                      color: movement.reason === 'Prescription médicale' ? 'text-orange-600' : 'text-red-600', 
+                      icon: movement.reason === 'Prescription médicale' ? '💊' : '↘️' 
+                    },
                     adjustment: { label: 'Ajustement', color: 'text-blue-600', icon: '⚖️' },
                     transfer: { label: 'Transfert', color: 'text-purple-600', icon: '↔️' }
                   };

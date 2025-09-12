@@ -19,11 +19,13 @@ import Farm from "./pages/Farm";
 import Vaccinations from "./pages/Vaccinations";
 import Antiparasites from "./pages/Antiparasites";
 import Stock from "./pages/Stock";
+import Accounting from "./pages/Accounting";
 import TestStats from "./pages/TestStats";
 import SimpleTest from "./pages/SimpleTest";
 import NotFound from "./pages/NotFound";
 import Settings from "./pages/Settings";
 import { SettingsProvider } from "@/contexts/SettingsContext";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 
 const queryClient = new QueryClient();
 
@@ -35,7 +37,8 @@ const App = () => (
         <Sonner />
         <ClientProvider>
           <SettingsProvider>
-            <BrowserRouter>
+            <ThemeProvider>
+              <BrowserRouter>
               <div className="min-h-screen bg-background">
                 <Routes>
                   <Route path="/" element={<Landing />} />
@@ -101,6 +104,12 @@ const App = () => (
                       <Stock />
                     </>
                   } />
+                  <Route path="/accounting" element={
+                    <>
+                      <VetNavigation />
+                      <Accounting />
+                    </>
+                  } />
                   <Route path="/test-stats" element={
                     <>
                       <VetNavigation />
@@ -124,6 +133,7 @@ const App = () => (
                 </Routes>
               </div>
             </BrowserRouter>
+            </ThemeProvider>
           </SettingsProvider>
         </ClientProvider>
       </TooltipProvider>

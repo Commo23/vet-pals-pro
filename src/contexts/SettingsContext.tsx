@@ -42,6 +42,7 @@ export interface ClinicSettings {
   veterinarians: Veterinarian[];
   farmManagement: FarmManagementSettings;
   displayPreferences: DisplayPreferences;
+  defaultConsultationPrice: number;
 }
 
 const SETTINGS_KEY = 'vetpro-clinicSettings';
@@ -118,7 +119,8 @@ const defaultSettings: ClinicSettings = {
   showVetsInfo: true,
   veterinarians: defaultVeterinarians,
   farmManagement: defaultFarmManagementSettings,
-  displayPreferences: defaultDisplayPreferences
+  displayPreferences: defaultDisplayPreferences,
+  defaultConsultationPrice: 150
 };
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);

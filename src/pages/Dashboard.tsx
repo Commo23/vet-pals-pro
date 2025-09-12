@@ -3,6 +3,7 @@ import { DashboardStats } from "@/components/DashboardStats";
 import { ClientsOverview } from "@/components/ClientsOverview";
 import { PetsOverview } from "@/components/PetsOverview";
 import { ConsultationsOverview } from "@/components/ConsultationsOverview";
+import { DashboardAlerts } from "@/components/DashboardAlerts";
 import { SyncStatus } from "@/components/SyncStatus";
 import { DataManager } from "@/components/DataManager";
 
@@ -11,9 +12,10 @@ const Dashboard = () => {
     <div className="container mx-auto px-6 py-8 space-y-8">
       <HeroSection />
       
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-3">
         <SyncStatus />
         <DataManager />
+        <DashboardAlerts />
       </div>
       
       <section>
