@@ -43,6 +43,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useReactToPrint } from 'react-to-print';
 import CertificateVaccinationPrint from '@/components/CertificateVaccinationPrint';
+import { UnifiedCalendar } from '@/components/UnifiedCalendar';
 
 
 // Protocoles vaccinaux prédéfinis
@@ -106,112 +107,38 @@ const getStatusIcon = (status: string) => {
 
 const VaccinationCalendar: React.FC = () => {
   const { vaccinations, pets, clients } = useClients();
-  const [currentDate, setCurrentDate] = useState(new Date());
   
-  // Générer les jours du mois
-  const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-  const monthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-  const startDate = new Date(monthStart);
-  startDate.setDate(startDate.getDate() - monthStart.getDay());
-  
-  const days = [];
-  const current = new Date(startDate);
-  
-  while (current <= monthEnd || days.length < 42) {
-    days.push(new Date(current));
-    current.setDate(current.getDate() + 1);
-  }
+  // Convertir les vaccinations en événements pour le calendrier unifié
+  const vaccinationEvents = useMemo(() => {
+    return vaccinations.map(vaccination => ({
+      id: vaccination.id,
+      type: 'vaccination' as const,
+      title: vaccination.vaccineName,
+      date: vaccination.nextDueDate,
+      status: vaccination.status,
+      clientName: clients.find(c => c.id === vaccination.clientId)?.name,
+      petName: pets.find(p => p.id === vaccination.petId)?.name,
+    }));
+  }, [vaccinations, clients, pets]);
 
-  // Grouper les vaccinations par date
-  const vaccinationsByDate = useMemo(() => {
-    const grouped: Record<string, any[]> = {};
-    vaccinations.forEach(vaccination => {
-      const dateKey = vaccination.nextDueDate;
-      if (!grouped[dateKey]) grouped[dateKey] = [];
-      grouped[dateKey].push(vaccination);
-    });
-    return grouped;
-  }, [vaccinations]);
+  const handleEventClick = (event: any) => {
+    // Gérer le clic sur un événement de vaccination
+    console.log('Vaccination clicked:', event);
+  };
 
-  const navigateMonth = (direction: 'prev' | 'next') => {
-    const newDate = new Date(currentDate);
-    newDate.setMonth(currentDate.getMonth() + (direction === 'next' ? 1 : -1));
-    setCurrentDate(newDate);
+  const handleDateClick = (date: string) => {
+    // Gérer le clic sur une date
+    console.log('Date clicked:', date);
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5" />
-            Calendrier Vaccinal
-          </CardTitle>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => navigateMonth('prev')}>
-              ←
-            </Button>
-            <span className="font-medium min-w-[140px] text-center">
-              {format(currentDate, 'MMMM yyyy', { locale: fr })}
-            </span>
-            <Button variant="outline" size="sm" onClick={() => navigateMonth('next')}>
-              →
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-7 gap-1 mb-4">
-          {['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'].map(day => (
-            <div key={day} className="p-2 text-center text-sm font-medium text-gray-500">
-              {day}
-            </div>
-          ))}
-        </div>
-        <div className="grid grid-cols-7 gap-1">
-          {days.map((day, index) => {
-            const dayKey = format(day, 'yyyy-MM-dd');
-            const dayVaccinations = vaccinationsByDate[dayKey] || [];
-            const isCurrentMonth = day.getMonth() === currentDate.getMonth();
-            const isToday = isSameDay(day, new Date());
-            
-            return (
-              <div
-                key={index}
-                className={`
-                  min-h-[80px] p-1 border rounded-lg relative
-                  ${isCurrentMonth ? 'bg-white' : 'bg-gray-50'}
-                  ${isToday ? 'ring-2 ring-blue-500' : ''}
-                `}
-              >
-                <div className={`text-sm font-medium ${isCurrentMonth ? 'text-gray-900' : 'text-gray-400'}`}>
-                  {day.getDate()}
-                </div>
-                <div className="space-y-1 mt-1">
-                  {dayVaccinations.slice(0, 2).map((vaccination, vIndex) => (
-                    <div
-                      key={vIndex}
-                      className={`
-                        text-xs p-1 rounded text-center truncate
-                        ${getStatusColor(vaccination.status)}
-                      `}
-                      title={`${vaccination.petName} - ${vaccination.vaccineName}`}
-                    >
-                      {vaccination.petName}
-                    </div>
-                  ))}
-                  {dayVaccinations.length > 2 && (
-                    <div className="text-xs text-gray-500 text-center">
-                      +{dayVaccinations.length - 2}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
+    <UnifiedCalendar
+      events={vaccinationEvents}
+      onEventClick={handleEventClick}
+      onDateClick={handleDateClick}
+      title="Calendrier Vaccinal"
+      icon={<Calendar className="h-5 w-5" />}
+    />
   );
 };
 

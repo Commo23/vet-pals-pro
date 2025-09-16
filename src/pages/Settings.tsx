@@ -7,11 +7,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Edit, Trash2 } from "lucide-react";
 import { useClients } from "@/contexts/ClientContext";
-import { useSettings, FarmManagementSettings, ClinicSettings, DisplayPreferences } from '@/contexts/SettingsContext';
+import { useSettings, FarmManagementSettings, ClinicSettings, DisplayPreferences, ScheduleSettings } from '@/contexts/SettingsContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { UserProfile } from "@/components/UserProfile";
+import { User, Shield } from "lucide-react";
 
 interface Veterinarian {
   id: number;
@@ -82,7 +84,15 @@ const DEFAULT_SETTINGS: ClinicSettings = {
     defaultSurfaceUnit: 'hectares',
     defaultCoordinateFormat: 'decimal'
   },
-  defaultConsultationPrice: 150
+  defaultConsultationPrice: 150,
+  scheduleSettings: {
+    openingTime: '08:00',
+    closingTime: '18:00',
+    slotDuration: 30,
+    lunchBreakStart: '12:00',
+    lunchBreakEnd: '13:00',
+    workingDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+  }
 };
 
 export default function Settings() {
@@ -143,7 +153,7 @@ export default function Settings() {
   }, [pets]);
 
   // Handlers for clinic settings via context
-  const handleSettingsChange = (field: keyof ClinicSettings, value: string | boolean | number) => {
+  const handleSettingsChange = (field: keyof ClinicSettings, value: string | boolean | number | any) => {
     updateSettings({ ...settings, [field]: value } as ClinicSettings);
   };
   const saveSettings = () => {
@@ -351,7 +361,9 @@ export default function Settings() {
 
   return (
     <div className="container mx-auto px-6 py-8 space-y-8">
-      <Card>
+      <div className="grid gap-8 lg:grid-cols-3">
+        <div className="lg:col-span-2 space-y-8">
+          <Card>
         <CardHeader>
           <CardTitle>Paramètres de la Clinique</CardTitle>
         </CardHeader>
@@ -682,6 +694,135 @@ export default function Settings() {
         </CardContent>
       </Card>
 
+      {/* Section Configuration des Horaires */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Configuration des Horaires</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Heures d'ouverture et fermeture */}
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="openingTime">Heure d'ouverture</Label>
+                <Input
+                  id="openingTime"
+                  type="time"
+                  value={settings.scheduleSettings.openingTime}
+                  onChange={(e) => handleSettingsChange('scheduleSettings', {
+                    ...settings.scheduleSettings,
+                    openingTime: e.target.value
+                  })}
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="closingTime">Heure de fermeture</Label>
+                <Input
+                  id="closingTime"
+                  type="time"
+                  value={settings.scheduleSettings.closingTime}
+                  onChange={(e) => handleSettingsChange('scheduleSettings', {
+                    ...settings.scheduleSettings,
+                    closingTime: e.target.value
+                  })}
+                />
+              </div>
+            </div>
+
+            {/* Durée des créneaux */}
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="slotDuration">Durée des créneaux (minutes)</Label>
+                <Select
+                  value={settings.scheduleSettings.slotDuration.toString()}
+                  onValueChange={(value) => handleSettingsChange('scheduleSettings', {
+                    ...settings.scheduleSettings,
+                    slotDuration: parseInt(value)
+                  })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="15">15 minutes</SelectItem>
+                    <SelectItem value="30">30 minutes</SelectItem>
+                    <SelectItem value="45">45 minutes</SelectItem>
+                    <SelectItem value="60">1 heure</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          {/* Pause déjeuner */}
+          <div className="space-y-4">
+            <h4 className="font-medium">Pause déjeuner</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="lunchBreakStart">Début de pause</Label>
+                <Input
+                  id="lunchBreakStart"
+                  type="time"
+                  value={settings.scheduleSettings.lunchBreakStart || ''}
+                  onChange={(e) => handleSettingsChange('scheduleSettings', {
+                    ...settings.scheduleSettings,
+                    lunchBreakStart: e.target.value
+                  })}
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="lunchBreakEnd">Fin de pause</Label>
+                <Input
+                  id="lunchBreakEnd"
+                  type="time"
+                  value={settings.scheduleSettings.lunchBreakEnd || ''}
+                  onChange={(e) => handleSettingsChange('scheduleSettings', {
+                    ...settings.scheduleSettings,
+                    lunchBreakEnd: e.target.value
+                  })}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Jours de travail */}
+          <div className="space-y-4">
+            <h4 className="font-medium">Jours de travail</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { key: 'monday', label: 'Lundi' },
+                { key: 'tuesday', label: 'Mardi' },
+                { key: 'wednesday', label: 'Mercredi' },
+                { key: 'thursday', label: 'Jeudi' },
+                { key: 'friday', label: 'Vendredi' },
+                { key: 'saturday', label: 'Samedi' },
+                { key: 'sunday', label: 'Dimanche' }
+              ].map(day => (
+                <div key={day.key} className="flex items-center space-x-2">
+                  <Switch
+                    id={day.key}
+                    checked={settings.scheduleSettings.workingDays.includes(day.key)}
+                    onCheckedChange={(checked) => {
+                      const newWorkingDays = checked
+                        ? [...settings.scheduleSettings.workingDays, day.key]
+                        : settings.scheduleSettings.workingDays.filter(d => d !== day.key);
+                      
+                      handleSettingsChange('scheduleSettings', {
+                        ...settings.scheduleSettings,
+                        workingDays: newWorkingDays
+                      });
+                    }}
+                  />
+                  <Label htmlFor={day.key} className="text-sm">{day.label}</Label>
+                </div>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Section Farm Management */}
       <Card>
         <CardHeader>
@@ -875,6 +1016,38 @@ export default function Settings() {
           </div>
         </DialogContent>
       </Dialog>
+        </div>
+        
+        {/* Profil utilisateur */}
+        <div className="lg:col-span-1 space-y-6">
+          <UserProfile />
+          
+          {/* Liens rapides */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Liens Rapides</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Button 
+                variant="outline" 
+                className="w-full justify-start gap-2"
+                onClick={() => window.location.href = '/profile'}
+              >
+                <User className="h-4 w-4" />
+                Mon Profil
+              </Button>
+              <Button 
+                variant="outline" 
+                className="w-full justify-start gap-2"
+                onClick={() => window.location.href = '/auth-settings'}
+              >
+                <Shield className="h-4 w-4" />
+                Paramètres de Connexion
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }

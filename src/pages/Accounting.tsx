@@ -9,8 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { useClients, AccountingEntry, RecurringCharge, GeneratedEntry } from '@/contexts/ClientContext';
+import { useClients, AccountingEntry } from '@/contexts/ClientContext';
 import { useSettings } from '@/contexts/SettingsContext';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -23,17 +22,40 @@ import {
   Edit,
   Trash2,
   FileText,
-  PieChart,
-  BarChart3,
-  Cog,
-  CheckCircle,
-  XCircle,
-  Clock,
-  MoreHorizontal,
-  RefreshCw
+  Lightbulb,
+  X
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+
+// Interface pour les suggestions
+interface AccountingSuggestion {
+  description: string;
+  amount: number;
+  type: 'revenue' | 'expense';
+  frequency: 'monthly' | 'annual' | 'occasional';
+  source: string;
+}
+
+// Suggestions prédéfinies pour les charges et recettes
+const ACCOUNTING_SUGGESTIONS: { monthly: AccountingSuggestion[]; annual: AccountingSuggestion[]; occasional: AccountingSuggestion[] } = {
+  monthly: [
+    { description: 'Salaire Secrétaire', amount: 3000, type: 'expense', frequency: 'monthly', source: 'salary' },
+    { description: 'CNSS Secrétaire', amount: 700, type: 'expense', frequency: 'monthly', source: 'insurance' },
+    { description: 'CNSS Vétérinaire', amount: 1500, type: 'expense', frequency: 'monthly', source: 'insurance' },
+    { description: 'Loyer', amount: 3000, type: 'expense', frequency: 'monthly', source: 'rent' },
+    { description: 'Eau et Électricité', amount: 300, type: 'expense', frequency: 'monthly', source: 'other' }
+  ],
+  annual: [
+    { description: 'Impôts', amount: 3000, type: 'expense', frequency: 'annual', source: 'tax' },
+    { description: 'Cotisation Ordre des Vétérinaires', amount: 1200, type: 'expense', frequency: 'annual', source: 'other' }
+  ],
+  occasional: [
+    { description: 'Maintenance Équipement', amount: 500, type: 'expense', frequency: 'occasional', source: 'other' },
+    { description: 'Formation Professionnelle', amount: 800, type: 'expense', frequency: 'occasional', source: 'other' },
+    { description: 'Achat Matériel', amount: 1200, type: 'expense', frequency: 'occasional', source: 'other' }
+  ]
+};
 
 const Accounting: React.FC = () => {
   const { 
@@ -42,16 +64,6 @@ const Accounting: React.FC = () => {
     updateAccountingEntry, 
     deleteAccountingEntry,
     generateAccountingSummary,
-    recurringCharges,
-    generatedEntries,
-    addRecurringCharge,
-    updateRecurringCharge,
-    deleteRecurringCharge,
-    generateRecurringEntries,
-    confirmGeneratedEntry,
-    cancelGeneratedEntry,
-    resetRecurringChargesToDefault,
-    updateGeneratedEntryPaymentStatus,
     consultations,
     vaccinations,
     antiparasitics,
@@ -68,11 +80,19 @@ const Accounting: React.FC = () => {
   const [isAddEntryModalOpen, setIsAddEntryModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<AccountingEntry | null>(null);
   const [summary, setSummary] = useState<any>(null);
-  const [isRecurringSetupModalOpen, setIsRecurringSetupModalOpen] = useState(false);
-  const [editingRecurringCharge, setEditingRecurringCharge] = useState<RecurringCharge | null>(null);
-  const [pendingEntries, setPendingEntries] = useState<GeneratedEntry[]>([]);
-  const [showConfigurationHistory, setShowConfigurationHistory] = useState(false);
-  const [editingHistoryCharge, setEditingHistoryCharge] = useState<RecurringCharge | null>(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [customSuggestions, setCustomSuggestions] = useState<{ monthly: AccountingSuggestion[]; annual: AccountingSuggestion[]; occasional: AccountingSuggestion[] }>(ACCOUNTING_SUGGESTIONS);
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+  const [editingSuggestion, setEditingSuggestion] = useState<AccountingSuggestion | null>(null);
+
+  // Formulaire pour la configuration des suggestions
+  const [suggestionFormData, setSuggestionFormData] = useState({
+    description: '',
+    amount: '',
+    type: 'expense' as 'revenue' | 'expense',
+    frequency: 'monthly' as 'monthly' | 'annual' | 'occasional',
+    source: 'other' as any
+  });
 
   // Formulaire pour ajouter/modifier une entrée
   const [formData, setFormData] = useState({
@@ -82,22 +102,6 @@ const Accounting: React.FC = () => {
     amount: '',
     date: '',
     source: 'other' as any,
-    notes: ''
-  });
-
-  // Formulaire pour les charges récurrentes
-  const [recurringFormData, setRecurringFormData] = useState({
-    name: '',
-    description: '',
-    amount: '',
-    frequency: 'monthly' as 'monthly' | 'annual' | 'quarterly',
-    type: 'expense' as 'revenue' | 'expense',
-    source: 'other' as any,
-    dayOfMonth: '',
-    monthOfYear: '',
-    quarter: '',
-    startDate: '',
-    endDate: '',
     notes: ''
   });
 
@@ -111,27 +115,6 @@ const Accounting: React.FC = () => {
     setEndDate(format(endOfMonth, 'yyyy-MM-dd'));
   }, []);
 
-  // Pré-remplir le formulaire quand on édite une charge de l'historique
-  useEffect(() => {
-    if (editingHistoryCharge) {
-      setRecurringFormData({
-        name: editingHistoryCharge.name,
-        description: editingHistoryCharge.description,
-        amount: editingHistoryCharge.amount.toString(),
-        frequency: editingHistoryCharge.frequency,
-        type: editingHistoryCharge.type,
-        source: editingHistoryCharge.source,
-        dayOfMonth: editingHistoryCharge.dayOfMonth?.toString() || '',
-        monthOfYear: editingHistoryCharge.monthOfYear?.toString() || '',
-        quarter: editingHistoryCharge.quarter?.toString() || '',
-        startDate: editingHistoryCharge.startDate,
-        endDate: editingHistoryCharge.endDate || '',
-        notes: editingHistoryCharge.notes || ''
-      });
-      setEditingRecurringCharge(editingHistoryCharge);
-    }
-  }, [editingHistoryCharge]);
-
   // Calculer le résumé quand les dates changent
   useEffect(() => {
     if (startDate && endDate) {
@@ -139,30 +122,25 @@ const Accounting: React.FC = () => {
         ? format(new Date(startDate), 'yyyy-MM', { locale: fr })
         : selectedPeriod === 'year'
         ? format(new Date(startDate), 'yyyy', { locale: fr })
+        : selectedPeriod === 'day'
+        ? format(new Date(startDate), 'dd/MM/yyyy', { locale: fr })
         : `${format(new Date(startDate), 'dd/MM/yyyy')} - ${format(new Date(endDate), 'dd/MM/yyyy')}`;
       
       const calculatedSummary = generateAccountingSummary(period, startDate, endDate);
       setSummary(calculatedSummary);
-
-      // Générer les entrées récurrentes pour la période
-      const newGeneratedEntries = generateRecurringEntries(startDate, endDate);
-      
-      // Filtrer les entrées en attente pour la période
-      const pendingForPeriod = generatedEntries.filter(entry => {
-        const entryDate = new Date(entry.period + '-01');
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        return entryDate >= start && entryDate <= end && entry.status === 'pending';
-      });
-      setPendingEntries(pendingForPeriod);
     }
-  }, [startDate, endDate, selectedPeriod, accountingEntries, consultations, vaccinations, antiparasitics, prescriptions, stockMovements, generateAccountingSummary, generateRecurringEntries, generatedEntries]);
+  }, [startDate, endDate, selectedPeriod, accountingEntries, consultations, vaccinations, antiparasitics, prescriptions, stockMovements, generateAccountingSummary]);
 
   const handlePeriodChange = (period: string) => {
     setSelectedPeriod(period);
     const now = new Date();
     
     switch (period) {
+      case 'day':
+        const today = format(now, 'yyyy-MM-dd');
+        setStartDate(today);
+        setEndDate(today);
+        break;
       case 'month':
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
@@ -239,135 +217,79 @@ const Accounting: React.FC = () => {
     }
   };
 
-  // Fonctions pour les charges récurrentes
-  const handleAddRecurringCharge = () => {
-    if (!recurringFormData.name || !recurringFormData.amount || !recurringFormData.startDate) return;
+  const handleApplySuggestion = (suggestion: AccountingSuggestion) => {
+    setFormData({
+      ...formData,
+      type: suggestion.type,
+      frequency: suggestion.frequency || 'occasional',
+      description: suggestion.description,
+      amount: suggestion.amount.toString(),
+      source: suggestion.source,
+      date: formData.date || format(new Date(), 'yyyy-MM-dd')
+    });
+    setShowSuggestions(false);
+  };
 
-    const chargeData = {
-      name: recurringFormData.name,
-      description: recurringFormData.description,
-      amount: parseFloat(recurringFormData.amount),
-      frequency: recurringFormData.frequency,
-      type: recurringFormData.type,
-      source: recurringFormData.source,
-      isActive: true,
-      dayOfMonth: recurringFormData.frequency === 'monthly' ? parseInt(recurringFormData.dayOfMonth) : undefined,
-      monthOfYear: recurringFormData.frequency === 'annual' ? parseInt(recurringFormData.monthOfYear) : undefined,
-      quarter: recurringFormData.frequency === 'quarterly' ? parseInt(recurringFormData.quarter) : undefined,
-      startDate: recurringFormData.startDate,
-      endDate: recurringFormData.endDate || undefined,
-      notes: recurringFormData.notes
+  const handleAddSuggestion = () => {
+    if (!suggestionFormData.description || !suggestionFormData.amount) return;
+
+    const newSuggestion: AccountingSuggestion = {
+      description: suggestionFormData.description,
+      amount: parseFloat(suggestionFormData.amount),
+      type: suggestionFormData.type,
+      frequency: suggestionFormData.frequency,
+      source: suggestionFormData.source
     };
 
-    if (editingRecurringCharge) {
-      updateRecurringCharge(editingRecurringCharge.id, chargeData);
-      setEditingRecurringCharge(null);
-      setEditingHistoryCharge(null);
+    if (editingSuggestion) {
+      // Modifier une suggestion existante
+      const updatedSuggestions = { ...customSuggestions };
+      const category = editingSuggestion.frequency;
+      const index = updatedSuggestions[category].findIndex(s => s === editingSuggestion);
+      if (index !== -1) {
+        updatedSuggestions[category][index] = newSuggestion;
+      }
+      setCustomSuggestions(updatedSuggestions);
+      setEditingSuggestion(null);
     } else {
-      addRecurringCharge(chargeData);
+      // Ajouter une nouvelle suggestion
+      const updatedSuggestions = { ...customSuggestions };
+      const category = suggestionFormData.frequency;
+      updatedSuggestions[category].push(newSuggestion);
+      setCustomSuggestions(updatedSuggestions);
     }
 
     // Reset form
-    setRecurringFormData({
-      name: '',
+    setSuggestionFormData({
       description: '',
       amount: '',
-      frequency: 'monthly',
       type: 'expense',
-      source: 'other',
-      dayOfMonth: '',
-      monthOfYear: '',
-      quarter: '',
-      startDate: '',
-      endDate: '',
-      notes: ''
+      frequency: 'monthly',
+      source: 'other'
     });
-    setIsRecurringSetupModalOpen(false);
+    setIsConfigModalOpen(false);
   };
 
-  const handleEditRecurringCharge = (charge: RecurringCharge) => {
-    setEditingRecurringCharge(charge);
-    setRecurringFormData({
-      name: charge.name,
-      description: charge.description,
-      amount: charge.amount.toString(),
-      frequency: charge.frequency,
-      type: charge.type,
-      source: charge.source,
-      dayOfMonth: charge.dayOfMonth?.toString() || '',
-      monthOfYear: charge.monthOfYear?.toString() || '',
-      quarter: charge.quarter?.toString() || '',
-      startDate: charge.startDate,
-      endDate: charge.endDate || '',
-      notes: charge.notes || ''
+  const handleEditSuggestion = (suggestion: AccountingSuggestion) => {
+    setEditingSuggestion(suggestion);
+    setSuggestionFormData({
+      description: suggestion.description,
+      amount: suggestion.amount.toString(),
+      type: suggestion.type,
+      frequency: suggestion.frequency,
+      source: suggestion.source
     });
-    setIsRecurringSetupModalOpen(true);
+    setIsConfigModalOpen(true);
   };
 
-  const handleDeleteRecurringCharge = (id: number) => {
-    if (window.confirm('Êtes-vous sûr de vouloir supprimer cette charge récurrente ?')) {
-      deleteRecurringCharge(id);
+  const handleDeleteSuggestion = (suggestion: AccountingSuggestion) => {
+    if (window.confirm('Êtes-vous sûr de vouloir supprimer cette suggestion ?')) {
+      const updatedSuggestions = { ...customSuggestions };
+      const category = suggestion.frequency;
+      updatedSuggestions[category] = updatedSuggestions[category].filter(s => s !== suggestion);
+      setCustomSuggestions(updatedSuggestions);
     }
   };
-
-  const handleConfirmPendingEntry = (entryId: number, modifiedAmount?: number) => {
-    confirmGeneratedEntry(entryId, modifiedAmount);
-    toast({
-      title: "Entrée confirmée",
-      description: "L'entrée a été confirmée avec succès.",
-    });
-  };
-
-  const handleCancelPendingEntry = (entryId: number) => {
-    if (confirm('Êtes-vous sûr de vouloir annuler cette entrée ? Cette action est irréversible.')) {
-      cancelGeneratedEntry(entryId);
-      toast({
-        title: "Entrée annulée",
-        description: "L'entrée a été annulée avec succès.",
-      });
-    }
-  };
-
-  const handleResetToDefault = () => {
-    if (confirm('Êtes-vous sûr de vouloir réinitialiser toutes les charges récurrentes aux valeurs par défaut ? Cette action supprimera toutes les charges récurrentes actuelles.')) {
-      resetRecurringChargesToDefault();
-      toast({
-        title: "Charges récurrentes réinitialisées",
-        description: "Les charges récurrentes ont été réinitialisées aux valeurs par défaut.",
-      });
-    }
-  };
-
-  const handleEditHistoryCharge = (charge: RecurringCharge) => {
-    setEditingHistoryCharge(charge);
-    setIsRecurringSetupModalOpen(true);
-  };
-
-  const handleDeleteHistoryCharge = (chargeId: number) => {
-    if (confirm('Êtes-vous sûr de vouloir supprimer cette charge récurrente ?')) {
-      deleteRecurringCharge(chargeId);
-      toast({
-        title: "Charge récurrente supprimée",
-        description: "La charge récurrente a été supprimée avec succès.",
-      });
-    }
-  };
-
-  const handleGeneratedEntryPaymentStatusChange = (entryId: number, status: 'paid' | 'unpaid' | 'pending') => {
-    updateGeneratedEntryPaymentStatus(entryId, status);
-    const statusText = status === 'paid' ? 'payée' : status === 'unpaid' ? 'non payée' : 'en attente';
-    toast({
-      title: "Statut de paiement mis à jour",
-      description: `L'entrée a été marquée comme ${statusText}.`,
-    });
-  };
-
-  // Générer automatiquement les entrées récurrentes pour la période sélectionnée
-  useEffect(() => {
-    if (startDate && endDate) {
-      generateRecurringEntries(startDate, endDate);
-    }
-  }, [startDate, endDate, generateRecurringEntries]);
 
   const filteredEntries = accountingEntries.filter(entry => {
     const entryDate = new Date(entry.date);
@@ -416,7 +338,7 @@ const Accounting: React.FC = () => {
                 Ajouter une entrée
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>
                   {editingEntry ? 'Modifier l\'entrée comptable' : 'Ajouter une entrée comptable'}
@@ -427,6 +349,93 @@ const Accounting: React.FC = () => {
               </DialogHeader>
               
               <div className="space-y-4">
+                {/* Suggestions prédéfinies */}
+                <div className="border rounded-lg p-4 bg-muted/50">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Lightbulb className="h-4 w-4 text-yellow-600" />
+                      <Label className="text-sm font-medium">Suggestions prédéfinies</Label>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowSuggestions(!showSuggestions)}
+                    >
+                      {showSuggestions ? <X className="h-4 w-4" /> : <Lightbulb className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  
+                  {showSuggestions && (
+                    <div className="space-y-3 max-h-96 overflow-y-auto">
+                      <div>
+                        <h4 className="text-sm font-medium text-muted-foreground mb-2">Charges mensuelles</h4>
+                        <div className="grid grid-cols-1 gap-2">
+                          {customSuggestions.monthly.map((suggestion, index) => (
+                            <Button
+                              key={index}
+                              variant="outline"
+                              size="sm"
+                              className="justify-start text-left h-auto p-2"
+                              onClick={() => handleApplySuggestion(suggestion)}
+                            >
+                              <div className="flex justify-between items-center w-full">
+                                <span className="text-sm">{suggestion.description}</span>
+                                <span className="text-sm font-medium text-muted-foreground">
+                                  {suggestion.amount} {settings.currency}
+                                </span>
+                              </div>
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <h4 className="text-sm font-medium text-muted-foreground mb-2">Charges annuelles</h4>
+                        <div className="grid grid-cols-1 gap-2">
+                          {customSuggestions.annual.map((suggestion, index) => (
+                            <Button
+                              key={index}
+                              variant="outline"
+                              size="sm"
+                              className="justify-start text-left h-auto p-2"
+                              onClick={() => handleApplySuggestion(suggestion)}
+                            >
+                              <div className="flex justify-between items-center w-full">
+                                <span className="text-sm">{suggestion.description}</span>
+                                <span className="text-sm font-medium text-muted-foreground">
+                                  {suggestion.amount} {settings.currency}
+                                </span>
+                              </div>
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <h4 className="text-sm font-medium text-muted-foreground mb-2">Charges occasionnelles</h4>
+                        <div className="grid grid-cols-1 gap-2">
+                          {customSuggestions.occasional.map((suggestion, index) => (
+                            <Button
+                              key={index}
+                              variant="outline"
+                              size="sm"
+                              className="justify-start text-left h-auto p-2"
+                              onClick={() => handleApplySuggestion(suggestion)}
+                            >
+                              <div className="flex justify-between items-center w-full">
+                                <span className="text-sm">{suggestion.description}</span>
+                                <span className="text-sm font-medium text-muted-foreground">
+                                  {suggestion.amount} {settings.currency}
+                                </span>
+                              </div>
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="type">Type</Label>
@@ -527,218 +536,7 @@ const Accounting: React.FC = () => {
               </div>
             </DialogContent>
           </Dialog>
-          
-          <Dialog open={isRecurringSetupModalOpen} onOpenChange={setIsRecurringSetupModalOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" onClick={() => { setEditingRecurringCharge(null); setRecurringFormData({ name: '', description: '', amount: '', frequency: 'monthly', type: 'expense', source: 'other', dayOfMonth: '', monthOfYear: '', quarter: '', startDate: '', endDate: '', notes: '' }); }}>
-                <Plus className="h-4 w-4 mr-2" />
-                Configuration récurrente
-              </Button>
-            </DialogTrigger>
-          </Dialog>
         </div>
-
-        {/* Modal pour les charges récurrentes */}
-        <Dialog open={isRecurringSetupModalOpen} onOpenChange={(open) => {
-          setIsRecurringSetupModalOpen(open);
-          if (!open) {
-            setEditingRecurringCharge(null);
-            setEditingHistoryCharge(null);
-            setRecurringFormData({
-              name: '',
-              description: '',
-              amount: '',
-              frequency: 'monthly',
-              type: 'expense',
-              source: 'other',
-              dayOfMonth: '',
-              monthOfYear: '',
-              quarter: '',
-              startDate: '',
-              endDate: '',
-              notes: ''
-            });
-          }
-        }}>
-          <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>
-              {editingRecurringCharge ? 'Modifier la charge récurrente' : 'Ajouter une charge récurrente'}
-            </DialogTitle>
-            <DialogDescription>
-              {editingRecurringCharge ? 'Modifiez les informations de cette charge récurrente.' : 'Configurez une charge qui se répète automatiquement selon la période choisie.'}
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="recurring-name">Nom</Label>
-                <Input
-                  id="recurring-name"
-                  value={recurringFormData.name}
-                  onChange={(e) => setRecurringFormData({ ...recurringFormData, name: e.target.value })}
-                  placeholder="Ex: Salaire employé"
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="recurring-type">Type</Label>
-                <Select value={recurringFormData.type} onValueChange={(value: 'revenue' | 'expense') => setRecurringFormData({ ...recurringFormData, type: value })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="revenue">Recette</SelectItem>
-                    <SelectItem value="expense">Charge</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div>
-              <Label htmlFor="recurring-description">Description</Label>
-              <Input
-                id="recurring-description"
-                value={recurringFormData.description}
-                onChange={(e) => setRecurringFormData({ ...recurringFormData, description: e.target.value })}
-                placeholder="Description détaillée"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="recurring-amount">Montant ({settings.currency})</Label>
-                <Input
-                  id="recurring-amount"
-                  type="number"
-                  step="0.01"
-                  value={recurringFormData.amount}
-                  onChange={(e) => setRecurringFormData({ ...recurringFormData, amount: e.target.value })}
-                  placeholder="0.00"
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="recurring-frequency">Fréquence</Label>
-                <Select value={recurringFormData.frequency} onValueChange={(value: 'monthly' | 'annual' | 'quarterly') => setRecurringFormData({ ...recurringFormData, frequency: value })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="monthly">Mensuel</SelectItem>
-                    <SelectItem value="quarterly">Trimestriel</SelectItem>
-                    <SelectItem value="annual">Annuel</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Champs conditionnels selon la fréquence */}
-            {recurringFormData.frequency === 'monthly' && (
-              <div>
-                <Label htmlFor="dayOfMonth">Jour du mois (1-31)</Label>
-                <Input
-                  id="dayOfMonth"
-                  type="number"
-                  min="1"
-                  max="31"
-                  value={recurringFormData.dayOfMonth}
-                  onChange={(e) => setRecurringFormData({ ...recurringFormData, dayOfMonth: e.target.value })}
-                  placeholder="1"
-                />
-              </div>
-            )}
-
-            {recurringFormData.frequency === 'annual' && (
-              <div>
-                <Label htmlFor="monthOfYear">Mois de l'année (1-12)</Label>
-                <Input
-                  id="monthOfYear"
-                  type="number"
-                  min="1"
-                  max="12"
-                  value={recurringFormData.monthOfYear}
-                  onChange={(e) => setRecurringFormData({ ...recurringFormData, monthOfYear: e.target.value })}
-                  placeholder="1"
-                />
-              </div>
-            )}
-
-            {recurringFormData.frequency === 'quarterly' && (
-              <div>
-                <Label htmlFor="quarter">Trimestre (1-4)</Label>
-                <Input
-                  id="quarter"
-                  type="number"
-                  min="1"
-                  max="4"
-                  value={recurringFormData.quarter}
-                  onChange={(e) => setRecurringFormData({ ...recurringFormData, quarter: e.target.value })}
-                  placeholder="1"
-                />
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="recurring-startDate">Date de début</Label>
-                <Input
-                  id="recurring-startDate"
-                  type="date"
-                  value={recurringFormData.startDate}
-                  onChange={(e) => setRecurringFormData({ ...recurringFormData, startDate: e.target.value })}
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="recurring-endDate">Date de fin (optionnel)</Label>
-                <Input
-                  id="recurring-endDate"
-                  type="date"
-                  value={recurringFormData.endDate}
-                  onChange={(e) => setRecurringFormData({ ...recurringFormData, endDate: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div>
-              <Label htmlFor="recurring-source">Source</Label>
-              <Select value={recurringFormData.source} onValueChange={(value) => setRecurringFormData({ ...recurringFormData, source: value })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="salary">Salaire</SelectItem>
-                  <SelectItem value="rent">Loyer</SelectItem>
-                  <SelectItem value="tax">Impôts</SelectItem>
-                  <SelectItem value="insurance">Assurance</SelectItem>
-                  <SelectItem value="other">Autre</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label htmlFor="recurring-notes">Notes (optionnel)</Label>
-              <Textarea
-                id="recurring-notes"
-                value={recurringFormData.notes}
-                onChange={(e) => setRecurringFormData({ ...recurringFormData, notes: e.target.value })}
-                placeholder="Informations supplémentaires..."
-              />
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsRecurringSetupModalOpen(false)}>
-                Annuler
-              </Button>
-              <Button onClick={handleAddRecurringCharge}>
-                {editingRecurringCharge ? 'Modifier' : 'Ajouter'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-        </Dialog>
       </div>
 
       {/* Sélecteur de période */}
@@ -752,6 +550,13 @@ const Accounting: React.FC = () => {
         <CardContent>
           <div className="flex gap-4 items-end">
             <div className="flex gap-2">
+              <Button
+                variant={selectedPeriod === 'day' ? 'default' : 'outline'}
+                onClick={() => handlePeriodChange('day')}
+                size="sm"
+              >
+                Ce jour
+              </Button>
               <Button
                 variant={selectedPeriod === 'month' ? 'default' : 'outline'}
                 onClick={() => handlePeriodChange('month')}
@@ -855,16 +660,13 @@ const Accounting: React.FC = () => {
         </div>
       )}
 
-      {/* Onglets pour les différentes vues */}
+      {/* Onglets pour les entrées comptables et la configuration */}
       <Tabs defaultValue="entries" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="entries">Entrées comptables</TabsTrigger>
-          <TabsTrigger value="pending">Entrées générées</TabsTrigger>
-          <TabsTrigger value="recurring">Configuration récurrentes</TabsTrigger>
-          <TabsTrigger value="setup">Paramètres</TabsTrigger>
+        <TabsList>
+          <TabsTrigger value="entries">Entrées Comptables</TabsTrigger>
+          <TabsTrigger value="configuration">Configuration</TabsTrigger>
         </TabsList>
-
-        {/* Onglet Entrées */}
+        
         <TabsContent value="entries">
           <Card>
             <CardHeader>
@@ -877,527 +679,269 @@ const Accounting: React.FC = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead>Fréquence</TableHead>
-                    <TableHead>Montant</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredEntries.map((entry) => (
-                    <TableRow key={entry.id}>
-                      <TableCell>{format(new Date(entry.date), 'dd/MM/yyyy', { locale: fr })}</TableCell>
-                      <TableCell>
-                        <Badge variant={entry.type === 'revenue' ? 'default' : 'destructive'}>
-                          {entry.type === 'revenue' ? 'Recette' : 'Charge'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{entry.description}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <span>{getSourceIcon(entry.source || 'other')}</span>
-                          <span className="text-sm">
-                            {entry.category === 'automatic' ? 'Automatique' : 'Manuel'}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">
-                          {entry.frequency === 'monthly' ? 'Mensuel' : 
-                           entry.frequency === 'annual' ? 'Annuel' : 'Occasionnel'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className={`font-medium ${entry.type === 'revenue' ? 'text-green-600' : 'text-red-600'}`}>
-                        {entry.type === 'revenue' ? '+' : '-'}{formatCurrency(entry.amount)}
-                      </TableCell>
-                      <TableCell>
-                        {entry.category === 'manual' && (
-                          <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleEditEntry(entry)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDeleteEntry(entry.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              
-              {filteredEntries.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground">
-                  Aucune entrée comptable pour cette période
-                </div>
-              )}
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Source</TableHead>
+                <TableHead>Fréquence</TableHead>
+                <TableHead>Montant</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredEntries.map((entry) => (
+                <TableRow key={entry.id}>
+                  <TableCell>{format(new Date(entry.date), 'dd/MM/yyyy', { locale: fr })}</TableCell>
+                  <TableCell>
+                    <Badge variant={entry.type === 'revenue' ? 'default' : 'destructive'}>
+                      {entry.type === 'revenue' ? 'Recette' : 'Charge'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{entry.description}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <span>{getSourceIcon(entry.source || 'other')}</span>
+                      <span className="text-sm">
+                        {entry.category === 'automatic' ? 'Automatique' : 'Manuel'}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">
+                      {entry.frequency === 'monthly' ? 'Mensuel' : 
+                       entry.frequency === 'annual' ? 'Annuel' : 'Occasionnel'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className={`font-medium ${entry.type === 'revenue' ? 'text-green-600' : 'text-red-600'}`}>
+                    {entry.type === 'revenue' ? '+' : '-'}{formatCurrency(entry.amount)}
+                  </TableCell>
+                  <TableCell>
+                    {entry.category === 'manual' && (
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEditEntry(entry)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeleteEntry(entry.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          
+          {filteredEntries.length === 0 && (
+            <div className="text-center py-8 text-muted-foreground">
+              Aucune entrée comptable pour cette période
+            </div>
+          )}
             </CardContent>
           </Card>
         </TabsContent>
-
-        {/* Onglet Configuration récurrentes */}
-        <TabsContent value="recurring">
+        
+        <TabsContent value="configuration">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <PieChart className="h-5 w-5" />
-                Configuration des charges récurrentes
+                <Lightbulb className="h-5 w-5" />
+                Configuration des Suggestions
               </CardTitle>
               <CardDescription>
-                Configurez les charges qui se répètent automatiquement (loyer, salaires, impôts, etc.)
+                Configurez les suggestions prédéfinies pour faciliter la saisie des charges et recettes
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nom</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Fréquence</TableHead>
-                    <TableHead>Montant</TableHead>
-                    <TableHead>Statut</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recurringCharges.map((charge) => (
-                    <TableRow key={charge.id}>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{charge.name}</div>
-                          <div className="text-sm text-muted-foreground">{charge.description}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={charge.type === 'revenue' ? 'default' : 'destructive'}>
-                          {charge.type === 'revenue' ? 'Recette' : 'Charge'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">
-                          {charge.frequency === 'monthly' ? 'Mensuel' : 
-                           charge.frequency === 'quarterly' ? 'Trimestriel' : 'Annuel'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {formatCurrency(charge.amount)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={charge.isActive ? 'default' : 'secondary'}>
-                          {charge.isActive ? 'Actif' : 'Inactif'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEditRecurringCharge(charge)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDeleteRecurringCharge(charge.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              
-              {recurringCharges.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground">
-                  Aucune charge récurrente configurée
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Onglet Entrées en attente */}
-        <TabsContent value="pending">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5" />
-                Entrées générées - Gestion des paiements
-              </CardTitle>
-              <CardDescription>
-                Entrées générées automatiquement selon les charges récurrentes configurées - Confirmez et gérez le statut de paiement
-              </CardDescription>
-              <div className="flex gap-2 mt-4">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    if (startDate && endDate) {
-                      const newEntries = generateRecurringEntries(startDate, endDate);
-                      if (newEntries.length > 0) {
-                        toast({
-                          title: "Entrées générées",
-                          description: `${newEntries.length} nouvelle(s) entrée(s) générée(s) pour la période sélectionnée.`,
-                        });
-                      } else {
-                        toast({
-                          title: "Aucune nouvelle entrée",
-                          description: "Toutes les entrées récurrentes sont déjà générées pour cette période.",
-                        });
-                      }
-                    }
-                  }}
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Générer les entrées
+            <CardContent className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-medium">Suggestions Mensuelles</h3>
+                <Button onClick={() => { setEditingSuggestion(null); setSuggestionFormData({ description: '', amount: '', type: 'expense', frequency: 'monthly', source: 'other' }); setIsConfigModalOpen(true); }}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Ajouter
                 </Button>
               </div>
-            </CardHeader>
-            <CardContent>
-              {(() => {
-                // Filtrer les entrées générées selon la période sélectionnée (exclure les annulées)
-                const filteredGeneratedEntries = generatedEntries.filter(entry => {
-                  const entryDate = new Date(entry.period);
-                  const start = new Date(startDate);
-                  const end = new Date(endDate);
-                  return entryDate >= start && entryDate <= end && entry.status !== 'cancelled';
-                });
-
-                return filteredGeneratedEntries.length > 0 ? (
-                  <div className="space-y-4">
-                    {filteredGeneratedEntries.map((entry) => {
-                    const charge = recurringCharges.find(c => c.id === entry.recurringChargeId);
-                    if (!charge) return null;
-                    
-                    return (
-                      <Card key={entry.id} className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-2">
-                              <div className="font-medium">{charge.name}</div>
-                              <Badge 
-                                variant={entry.status === 'pending' ? 'secondary' : entry.status === 'confirmed' ? 'default' : 'destructive'}
-                                className="text-xs"
-                              >
-                                {entry.status === 'pending' ? 'En attente' : entry.status === 'confirmed' ? 'Confirmé' : 'Annulé'}
-                              </Badge>
-                              <Badge 
-                                variant={entry.paymentStatus === 'paid' ? 'default' : entry.paymentStatus === 'pending' ? 'secondary' : 'destructive'}
-                                className="text-xs"
-                              >
-                                {entry.paymentStatus === 'paid' ? 'Payé' : entry.paymentStatus === 'pending' ? 'En attente' : 'Non payé'}
-                              </Badge>
-                              <Badge variant={charge.type === 'revenue' ? 'default' : 'destructive'}>
-                                {charge.type === 'revenue' ? 'Recette' : 'Charge'}
-                              </Badge>
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {charge.description} - Période: {entry.period}
-                            </div>
-                            <div className="text-sm">
-                              <span className="font-medium">
-                                {formatCurrency(charge.amount)}
-                              </span>
-                              {entry.paidDate && (
-                                <span className="ml-2 text-green-600">
-                                  Payé le: {format(new Date(entry.paidDate), 'dd/MM/yyyy', { locale: fr })}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            {entry.status === 'pending' && (
-                              <Button
-                                size="sm"
-                                onClick={() => handleConfirmPendingEntry(entry.id)}
-                              >
-                                Confirmer
-                              </Button>
-                            )}
-                            {entry.status === 'confirmed' && entry.paymentStatus === 'unpaid' && (
-                              <Button
-                                size="sm"
-                                variant="default"
-                                onClick={() => handleGeneratedEntryPaymentStatusChange(entry.id, 'paid')}
-                                className="bg-green-600 hover:bg-green-700"
-                              >
-                                <CheckCircle className="h-4 w-4 mr-2" />
-                                Confirmer le paiement
-                              </Button>
-                            )}
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="outline" size="sm">
-                                  <MoreHorizontal className="h-4 w-4 mr-2" />
-                                  Actions
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleGeneratedEntryPaymentStatusChange(entry.id, 'paid')}>
-                                  <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
-                                  Marquer comme payé
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleGeneratedEntryPaymentStatusChange(entry.id, 'pending')}>
-                                  <Clock className="h-4 w-4 mr-2 text-yellow-600" />
-                                  Marquer en attente
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleGeneratedEntryPaymentStatusChange(entry.id, 'unpaid')}>
-                                  <XCircle className="h-4 w-4 mr-2 text-red-600" />
-                                  Marquer non payé
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleCancelPendingEntry(entry.id)}
-                            >
-                              Annuler
-                            </Button>
-                          </div>
-                        </div>
-                      </Card>
-                    );
-                    })}
+              
+              <div className="grid gap-3">
+                {customSuggestions.monthly.map((suggestion, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium">{suggestion.description}</span>
+                      <span className="text-sm text-muted-foreground">{suggestion.amount} {settings.currency}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => handleEditSuggestion(suggestion)}>
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => handleDeleteSuggestion(suggestion)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                ) : (
-                  <div className="text-center py-8 text-muted-foreground">
-                    Aucune entrée générée pour cette période
+                ))}
+              </div>
+              
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-medium">Suggestions Annuelles</h3>
+                <Button onClick={() => { setEditingSuggestion(null); setSuggestionFormData({ description: '', amount: '', type: 'expense', frequency: 'annual', source: 'other' }); setIsConfigModalOpen(true); }}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Ajouter
+                </Button>
+              </div>
+              
+              <div className="grid gap-3">
+                {customSuggestions.annual.map((suggestion, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium">{suggestion.description}</span>
+                      <span className="text-sm text-muted-foreground">{suggestion.amount} {settings.currency}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => handleEditSuggestion(suggestion)}>
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => handleDeleteSuggestion(suggestion)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                );
-              })()}
+                ))}
+              </div>
+              
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-medium">Suggestions Occasionnelles</h3>
+                <Button onClick={() => { setEditingSuggestion(null); setSuggestionFormData({ description: '', amount: '', type: 'expense', frequency: 'occasional', source: 'other' }); setIsConfigModalOpen(true); }}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Ajouter
+                </Button>
+              </div>
+              
+              <div className="grid gap-3">
+                {customSuggestions.occasional.map((suggestion, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium">{suggestion.description}</span>
+                      <span className="text-sm text-muted-foreground">{suggestion.amount} {settings.currency}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => handleEditSuggestion(suggestion)}>
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => handleDeleteSuggestion(suggestion)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
-
-        {/* Onglet Paramètres */}
-        <TabsContent value="setup">
-          <div className="space-y-4">
-            {/* Configuration actuelle */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Cog className="h-5 w-5" />
-                  Paramètres et historique des charges récurrentes
-                </CardTitle>
-                <CardDescription>
-                  Historique des configurations et paramètres des charges récurrentes
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="text-center py-8">
-                    <PieChart className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                    <h3 className="text-lg font-medium mb-2">Configuration des charges récurrentes</h3>
-                    <p className="text-muted-foreground mb-4">
-                      Configurez des charges qui se répètent automatiquement selon la période choisie.
-                      Les entrées seront générées et vous pourrez les confirmer ou les modifier.
-                    </p>
-                    <div className="flex gap-2 justify-center">
-                      <Button onClick={() => setIsRecurringSetupModalOpen(true)}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Ajouter une charge récurrente
-                      </Button>
-                      <Button variant="outline" onClick={handleResetToDefault}>
-                        <Cog className="h-4 w-4 mr-2" />
-                        Réinitialiser aux valeurs par défaut
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Historique de configuration */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5" />
-                  Historique de configuration
-                </CardTitle>
-                <CardDescription>
-                  Charges récurrentes configurées (modifiables et supprimables)
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {recurringCharges.length > 0 ? (
-                    <div className="space-y-4">
-                      {/* Charges mensuelles */}
-                      {recurringCharges.filter(charge => charge.frequency === 'monthly').length > 0 && (
-                        <div className="p-4 border rounded-lg bg-muted/30">
-                          <h4 className="font-medium mb-3">Charges mensuelles</h4>
-                          <div className="space-y-2">
-                            {recurringCharges
-                              .filter(charge => charge.frequency === 'monthly')
-                              .map((charge) => (
-                                <div key={charge.id} className="flex items-center justify-between p-3 bg-background rounded border">
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className="font-medium">{charge.name}</span>
-                                      {!charge.isActive && (
-                                        <Badge variant="secondary" className="text-xs">Inactif</Badge>
-                                      )}
-                                    </div>
-                                    <p className="text-xs text-muted-foreground mb-1">{charge.description}</p>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium">{charge.amount.toLocaleString()} {settings.currency}</span>
-                                    <div className="flex gap-1">
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => handleEditHistoryCharge(charge)}
-                                        className="h-8 w-8 p-0"
-                                      >
-                                        <Edit className="h-3 w-3" />
-                                      </Button>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => handleDeleteHistoryCharge(charge.id)}
-                                        className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                                      >
-                                        <Trash2 className="h-3 w-3" />
-                                      </Button>
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Charges annuelles */}
-                      {recurringCharges.filter(charge => charge.frequency === 'annual').length > 0 && (
-                        <div className="p-4 border rounded-lg bg-muted/30">
-                          <h4 className="font-medium mb-3">Charges annuelles</h4>
-                          <div className="space-y-2">
-                            {recurringCharges
-                              .filter(charge => charge.frequency === 'annual')
-                              .map((charge) => (
-                                <div key={charge.id} className="flex items-center justify-between p-3 bg-background rounded border">
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className="font-medium">{charge.name}</span>
-                                      {!charge.isActive && (
-                                        <Badge variant="secondary" className="text-xs">Inactif</Badge>
-                                      )}
-                                    </div>
-                                    <p className="text-xs text-muted-foreground mb-1">{charge.description}</p>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium">{charge.amount.toLocaleString()} {settings.currency}</span>
-                                    <div className="flex gap-1">
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => handleEditHistoryCharge(charge)}
-                                        className="h-8 w-8 p-0"
-                                      >
-                                        <Edit className="h-3 w-3" />
-                                      </Button>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => handleDeleteHistoryCharge(charge.id)}
-                                        className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                                      >
-                                        <Trash2 className="h-3 w-3" />
-                                      </Button>
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Charges trimestrielles */}
-                      {recurringCharges.filter(charge => charge.frequency === 'quarterly').length > 0 && (
-                        <div className="p-4 border rounded-lg bg-muted/30">
-                          <h4 className="font-medium mb-3">Charges trimestrielles</h4>
-                          <div className="space-y-2">
-                            {recurringCharges
-                              .filter(charge => charge.frequency === 'quarterly')
-                              .map((charge) => (
-                                <div key={charge.id} className="flex items-center justify-between p-3 bg-background rounded border">
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className="font-medium">{charge.name}</span>
-                                      {!charge.isActive && (
-                                        <Badge variant="secondary" className="text-xs">Inactif</Badge>
-                                      )}
-                                    </div>
-                                    <p className="text-xs text-muted-foreground mb-1">{charge.description}</p>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium">{charge.amount.toLocaleString()} {settings.currency}</span>
-                                    <div className="flex gap-1">
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => handleEditHistoryCharge(charge)}
-                                        className="h-8 w-8 p-0"
-                                      >
-                                        <Edit className="h-3 w-3" />
-                                      </Button>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => handleDeleteHistoryCharge(charge.id)}
-                                        className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                                      >
-                                        <Trash2 className="h-3 w-3" />
-                                      </Button>
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <PieChart className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                      <h3 className="text-lg font-medium mb-2">Aucune charge récurrente</h3>
-                      <p className="text-muted-foreground mb-4">
-                        Aucune charge récurrente n'est configurée. Ajoutez-en une ou utilisez les exemples par défaut.
-                      </p>
-                    </div>
-                  )}
-                  
-                  <div className="text-center">
-                    <Button variant="outline" onClick={handleResetToDefault}>
-                      <Cog className="h-4 w-4 mr-2" />
-                      Appliquer les exemples par défaut
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
       </Tabs>
+
+      {/* Modal pour configurer les suggestions */}
+      <Dialog open={isConfigModalOpen} onOpenChange={setIsConfigModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editingSuggestion ? 'Modifier la suggestion' : 'Ajouter une suggestion'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingSuggestion ? 'Modifiez les informations de cette suggestion.' : 'Ajoutez une nouvelle suggestion prédéfinie.'}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="suggestion-type">Type</Label>
+                <Select value={suggestionFormData.type} onValueChange={(value: 'revenue' | 'expense') => setSuggestionFormData({ ...suggestionFormData, type: value })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="revenue">Recette</SelectItem>
+                    <SelectItem value="expense">Charge</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <Label htmlFor="suggestion-frequency">Fréquence</Label>
+                <Select value={suggestionFormData.frequency} onValueChange={(value: 'monthly' | 'annual' | 'occasional') => setSuggestionFormData({ ...suggestionFormData, frequency: value })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="monthly">Mensuel</SelectItem>
+                    <SelectItem value="annual">Annuel</SelectItem>
+                    <SelectItem value="occasional">Occasionnel</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="suggestion-description">Description</Label>
+              <Input
+                id="suggestion-description"
+                value={suggestionFormData.description}
+                onChange={(e) => setSuggestionFormData({ ...suggestionFormData, description: e.target.value })}
+                placeholder="Ex: Salaire employé, Loyer, etc."
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="suggestion-amount">Montant ({settings.currency})</Label>
+                <Input
+                  id="suggestion-amount"
+                  type="number"
+                  step="0.01"
+                  value={suggestionFormData.amount}
+                  onChange={(e) => setSuggestionFormData({ ...suggestionFormData, amount: e.target.value })}
+                  placeholder="0.00"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="suggestion-source">Source</Label>
+                <Select value={suggestionFormData.source} onValueChange={(value) => setSuggestionFormData({ ...suggestionFormData, source: value })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="salary">Salaire</SelectItem>
+                    <SelectItem value="rent">Loyer</SelectItem>
+                    <SelectItem value="tax">Impôts</SelectItem>
+                    <SelectItem value="insurance">Assurance</SelectItem>
+                    <SelectItem value="other">Autre</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsConfigModalOpen(false)}>
+                Annuler
+              </Button>
+              <Button onClick={handleAddSuggestion}>
+                {editingSuggestion ? 'Modifier' : 'Ajouter'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

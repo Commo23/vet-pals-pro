@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Package, Calendar, DollarSign, Clock, TrendingUp } from "lucide-react";
+import { AlertTriangle, Package, Calendar, Clock, TrendingUp } from "lucide-react";
 import { useClients } from "@/contexts/ClientContext";
 import { useSettings } from "@/contexts/SettingsContext";
 
@@ -9,7 +9,6 @@ export function DashboardAlerts() {
   const { 
     appointments, 
     stockItems, 
-    generatedEntries,
     getUpcomingAppointments,
     getOverdueAppointments 
   } = useClients();
@@ -23,8 +22,6 @@ export function DashboardAlerts() {
   
   const lowStockItems = stockItems.filter(item => item.currentStock <= item.minimumStock);
   const outOfStockItems = stockItems.filter(item => item.currentStock === 0);
-  
-  const pendingGeneratedEntries = generatedEntries.filter(e => e.status === 'pending');
   
   const alerts = [];
 
@@ -79,20 +76,6 @@ export function DashboardAlerts() {
       color: 'text-blue-600',
       bgColor: 'bg-blue-50',
       borderColor: 'border-blue-200'
-    });
-  }
-
-  // Alertes comptables
-  if (pendingGeneratedEntries.length > 0) {
-    alerts.push({
-      type: 'info',
-      icon: DollarSign,
-      title: 'Charges en attente',
-      message: `${pendingGeneratedEntries.length} charge(s) récurrente(s) en attente de confirmation`,
-      count: pendingGeneratedEntries.length,
-      color: 'text-purple-600',
-      bgColor: 'bg-purple-50',
-      borderColor: 'border-purple-200'
     });
   }
 

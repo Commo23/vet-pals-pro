@@ -9,8 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar, Clock, User, Heart, AlertCircle, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useClients, Client, Pet } from "@/contexts/ClientContext";
+import { useSettings } from "@/contexts/SettingsContext";
 import { NewClientModal } from "@/components/forms/NewClientModal";
 import { NewPetModal } from "@/components/forms/NewPetModal";
+import { generateTimeSlots, isSlotAvailable } from "@/utils/scheduleUtils";
 
 interface NewAppointmentModalProps {
   open: boolean;
@@ -33,11 +35,13 @@ export function NewAppointmentModal({
   originalVaccinationId,
 }: NewAppointmentModalProps) {
   const { clients, pets, addAppointment, getPetsByOwnerId,
-    createVaccinationReminder } = useClients();
+    createVaccinationReminder, appointments } = useClients();
+  const { settings } = useSettings();
   const { toast } = useToast();
   
   const [showClientModal, setShowClientModal] = useState(false);
   const [showPetModal, setShowPetModal] = useState(false);
+  const [availableSlots, setAvailableSlots] = useState<{ time: string; isAvailable: boolean; isLunchBreak: boolean }[]>([]);
   
   const [formData, setFormData] = useState({
     clientId: 0,
@@ -103,6 +107,20 @@ export function NewAppointmentModal({
       setAvailablePets([]);
     }
   }, [formData.clientId, getPetsByOwnerId, prefillPetId]);
+
+  // Générer les créneaux disponibles quand la date change
+  useEffect(() => {
+    if (formData.date) {
+      const slots = generateTimeSlots(formData.date, settings.scheduleSettings, appointments);
+      setAvailableSlots(slots);
+      // Réinitialiser l'heure si elle n'est plus disponible
+      if (formData.time && !isSlotAvailable(formData.date, formData.time, settings.scheduleSettings, appointments)) {
+        setFormData(prev => ({ ...prev, time: "" }));
+      }
+    } else {
+      setAvailableSlots([]);
+    }
+  }, [formData.date, settings.scheduleSettings, appointments]);
 
   // Vérifier les conflits de rendez-vous
   useEffect(() => {
@@ -339,15 +357,51 @@ export function NewAppointmentModal({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="time">Heure *</Label>
-                <Input
-                  id="time"
-                  type="time"
-                  value={formData.time}
-                  onChange={handleChange}
-                  min="08:00"
-                  max="18:00"
-                  required
-                />
+                {formData.date ? (
+                  <div className="space-y-2">
+                    <Select
+                      value={formData.time}
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, time: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sélectionner un créneau" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        {availableSlots.map((slot) => (
+                          <SelectItem 
+                            key={slot.time} 
+                            value={slot.time}
+                            disabled={!slot.isAvailable}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span>{slot.time}</span>
+                              {slot.isLunchBreak && (
+                                <Badge variant="secondary" className="text-xs">Pause</Badge>
+                              )}
+                              {!slot.isAvailable && (
+                                <Badge variant="destructive" className="text-xs">Occupé</Badge>
+                              )}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {availableSlots.length === 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        Aucun créneau disponible pour cette date
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <Input
+                    id="time"
+                    type="time"
+                    value={formData.time}
+                    onChange={handleChange}
+                    disabled
+                    placeholder="Sélectionnez d'abord une date"
+                  />
+                )}
               </div>
             </div>
             

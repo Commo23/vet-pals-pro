@@ -16,8 +16,6 @@ export function DashboardStats() {
     stockItems,
     stockMovements,
     accountingEntries,
-    recurringCharges,
-    generatedEntries,
     getUpcomingAppointments, 
     getOverdueAppointments,
     generateAccountingSummary
@@ -34,9 +32,6 @@ export function DashboardStats() {
   const totalVaccinations = vaccinations.length;
   const totalAntiparasitics = antiparasitics.length;
   const totalStockItems = stockItems.length;
-  const totalRecurringCharges = recurringCharges.length;
-  const pendingGeneratedEntries = generatedEntries.filter(e => e.status === 'pending').length;
-
 
   // Calculer les consultations de ce mois
   const thisMonth = new Date().getMonth();

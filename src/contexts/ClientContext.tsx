@@ -316,8 +316,6 @@ interface ClientContextType {
   stockAlerts: StockAlert[];
   stockMovements: StockMovement[];
   accountingEntries: AccountingEntry[];
-  recurringCharges: RecurringCharge[];
-  generatedEntries: GeneratedEntry[];
   addClient: (clientData: Omit<Client, 'id' | 'pets' | 'lastVisit' | 'totalVisits'>) => void;
   addPet: (petData: Omit<Pet, 'id'>) => void;
   addConsultation: (consultationData: Omit<Consultation, 'id' | 'createdAt'>) => void;
@@ -338,14 +336,6 @@ interface ClientContextType {
   calculateAutomaticRevenue: (startDate: string, endDate: string) => { totalRevenue: number; revenueBreakdown: any };
   calculateAutomaticExpenses: (startDate: string, endDate: string) => { totalExpenses: number; expenseBreakdown: any };
   generateAccountingSummary: (period: string, startDate: string, endDate: string) => AccountingSummary;
-  addRecurringCharge: (chargeData: Omit<RecurringCharge, 'id' | 'createdAt' | 'lastGenerated'>) => RecurringCharge;
-  updateRecurringCharge: (id: number, updates: Partial<RecurringCharge>) => void;
-  deleteRecurringCharge: (id: number) => void;
-  generateRecurringEntries: (startDate: string, endDate: string) => GeneratedEntry[];
-  confirmGeneratedEntry: (generatedEntryId: number, modifiedAmount?: number) => void;
-  cancelGeneratedEntry: (generatedEntryId: number) => void;
-  resetRecurringChargesToDefault: () => void;
-  updateGeneratedEntryPaymentStatus: (id: number, status: 'paid' | 'unpaid' | 'pending') => void;
   updateClient: (id: number, clientData: Partial<Client>) => void;
   updatePet: (id: number, petData: Partial<Pet>) => void;
   updateConsultation: (id: number, consultationData: Partial<Consultation>) => void;
@@ -1853,8 +1843,6 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       const savedStockAlerts = localStorage.getItem('vetpro-stockAlerts');
       const savedStockMovements = localStorage.getItem('vetpro-stockMovements');
       const savedAccountingEntries = localStorage.getItem('vetpro-accountingEntries');
-      const savedRecurringCharges = localStorage.getItem('vetpro-recurringCharges');
-      const savedGeneratedEntries = localStorage.getItem('vetpro-generatedEntries');
       console.log('🔍 loadDataFromStorage - DEBUGGING ANTIPARASITICS:');
       console.log('   savedAntiparasitics raw:', savedAntiparasitics);
       console.log('   localStorage vetpro-antiparasitics exists:', !!localStorage.getItem('vetpro-antiparasitics'));
@@ -1877,8 +1865,6 @@ export function ClientProvider({ children }: { children: ReactNode }) {
         const parsedStockAlerts = savedStockAlerts ? JSON.parse(savedStockAlerts) : [];
         const parsedStockMovements = savedStockMovements ? JSON.parse(savedStockMovements) : [];
         const parsedAccountingEntries = savedAccountingEntries ? JSON.parse(savedAccountingEntries) : [];
-        const parsedRecurringCharges = savedRecurringCharges ? JSON.parse(savedRecurringCharges) : [];
-        const parsedGeneratedEntries = savedGeneratedEntries ? JSON.parse(savedGeneratedEntries) : [];
         console.log('✅ loadDataFromStorage - PARSED ANTIPARASITICS:');
         console.log('   parsedAntiparasitics:', parsedAntiparasitics);
         console.log('   Length:', parsedAntiparasitics?.length || 0);
@@ -1908,8 +1894,6 @@ export function ClientProvider({ children }: { children: ReactNode }) {
           stockAlerts: parsedStockAlerts,
           stockMovements: parsedStockMovements,
           accountingEntries: parsedAccountingEntries,
-          recurringCharges: parsedRecurringCharges,
-          generatedEntries: parsedGeneratedEntries
         };
       }
     } catch (error) {
@@ -1939,8 +1923,6 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       stockAlerts: [],
       stockMovements: [],
       accountingEntries: [],
-      recurringCharges: [],
-      generatedEntries: []
     };
   };
 
@@ -1962,8 +1944,6 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     stockAlertsData: StockAlert[] = stockAlerts,
     stockMovementsData: StockMovement[] = stockMovements,
     accountingEntriesData: AccountingEntry[] = accountingEntries,
-    recurringChargesData: RecurringCharge[] = recurringCharges,
-    generatedEntriesData: GeneratedEntry[] = generatedEntries
   ) => {
     try {
       localStorage.setItem('vetpro-clients', JSON.stringify(clientsData));
@@ -1982,8 +1962,6 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('vetpro-stockAlerts', JSON.stringify(stockAlertsData));
       localStorage.setItem('vetpro-stockMovements', JSON.stringify(stockMovementsData));
       localStorage.setItem('vetpro-accountingEntries', JSON.stringify(accountingEntriesData));
-      localStorage.setItem('vetpro-recurringCharges', JSON.stringify(recurringChargesData));
-      localStorage.setItem('vetpro-generatedEntries', JSON.stringify(generatedEntriesData));
       console.log('saveDataToStorage - antiparasitics saved:', antiparasiticsData);
     } catch (error) {
       console.error('Erreur lors de la sauvegarde des données:', error);
@@ -2009,114 +1987,8 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   const [stockAlerts, setStockAlerts] = useState<StockAlert[]>(initialData.stockAlerts || []);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>(initialData.stockMovements || []);
   
-  // Exemples par défaut de charges récurrentes
-  const defaultRecurringCharges: RecurringCharge[] = [
-    {
-      id: 1,
-      name: "Loyer",
-      description: "Loyer mensuel de la clinique",
-      amount: 3000,
-      frequency: "monthly",
-      type: "expense",
-      source: "rent",
-      dayOfMonth: 1,
-      startDate: new Date().toISOString().split('T')[0],
-      endDate: "",
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      lastGenerated: "",
-      notes: "Loyer mensuel de la clinique vétérinaire"
-    },
-    {
-      id: 2,
-      name: "Salaire Secrétaire",
-      description: "Salaire mensuel de la secrétaire",
-      amount: 3000,
-      frequency: "monthly",
-      type: "expense",
-      source: "salary",
-      dayOfMonth: 1,
-      startDate: new Date().toISOString().split('T')[0],
-      endDate: "",
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      lastGenerated: "",
-      notes: "Salaire mensuel de la secrétaire"
-    },
-    {
-      id: 3,
-      name: "Impôts",
-      description: "Impôts annuels",
-      amount: 3000,
-      frequency: "annual",
-      type: "expense",
-      source: "tax",
-      monthOfYear: 12,
-      startDate: new Date().toISOString().split('T')[0],
-      endDate: "",
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      lastGenerated: "",
-      notes: "Impôts annuels de la clinique"
-    },
-    {
-      id: 4,
-      name: "CNSS Secrétaire",
-      description: "Cotisations sociales secrétaire",
-      amount: 700,
-      frequency: "monthly",
-      type: "expense",
-      source: "insurance",
-      dayOfMonth: 1,
-      startDate: new Date().toISOString().split('T')[0],
-      endDate: "",
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      lastGenerated: "",
-      notes: "Cotisations sociales CNSS pour la secrétaire"
-    },
-    {
-      id: 5,
-      name: "CNSS Vétérinaire",
-      description: "Cotisations sociales vétérinaire",
-      amount: 1500,
-      frequency: "monthly",
-      type: "expense",
-      source: "insurance",
-      dayOfMonth: 1,
-      startDate: new Date().toISOString().split('T')[0],
-      endDate: "",
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      lastGenerated: "",
-      notes: "Cotisations sociales CNSS pour le vétérinaire"
-    },
-    {
-      id: 6,
-      name: "Cotisation Ordre des Vétérinaires",
-      description: "Cotisation annuelle à l'Ordre des Vétérinaires",
-      amount: 1200,
-      frequency: "annual",
-      type: "expense",
-      source: "other",
-      monthOfYear: 1,
-      startDate: new Date().toISOString().split('T')[0],
-      endDate: "",
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      lastGenerated: "",
-      notes: "Cotisation annuelle à l'Ordre des Vétérinaires"
-    }
-  ];
-
   // États pour la gestion comptable
   const [accountingEntries, setAccountingEntries] = useState<AccountingEntry[]>(initialData.accountingEntries || []);
-  const [recurringCharges, setRecurringCharges] = useState<RecurringCharge[]>(
-    initialData.recurringCharges && initialData.recurringCharges.length > 0 
-      ? initialData.recurringCharges 
-      : defaultRecurringCharges
-  );
-  const [generatedEntries, setGeneratedEntries] = useState<GeneratedEntry[]>(initialData.generatedEntries || []);
   
   console.log('🚀 ClientContext - ANTIPARASITICS DEBUG:');
   console.log('   Initial antiparasitics from storage:', initialData.antiparasitics);
@@ -2147,11 +2019,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
     
     // Générer les entrées pour le mois actuel
-    generateRecurringEntries(
-      startOfMonth.toISOString().split('T')[0],
-      endOfMonth.toISOString().split('T')[0]
-    );
-  }, [recurringCharges]); // Se déclenche quand les charges récurrentes changent
+  }, []);
 
   // Générer automatiquement les entrées comptables quand les données changent
   useEffect(() => {
@@ -2872,7 +2740,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     const updatedPrescriptions = [...prescriptions, newPrescription];
     setPrescriptions(updatedPrescriptions);
     setStockItems(updatedStockItems);
-    saveDataToStorage(clients, pets, consultations, appointments, updatedPrescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, updatedStockItems, stockAlerts, stockMovements, accountingEntries, recurringCharges, generatedEntries);
+    saveDataToStorage(clients, pets, consultations, appointments, updatedPrescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, updatedStockItems, stockAlerts, stockMovements, accountingEntries);
   };
 
   const updatePrescription = (id: number, prescriptionData: Partial<Prescription>) => {
@@ -2880,13 +2748,13 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       prescription.id === id ? { ...prescription, ...prescriptionData } : prescription
     );
     setPrescriptions(updatedPrescriptions);
-    saveDataToStorage(clients, pets, consultations, appointments, updatedPrescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, accountingEntries, recurringCharges, generatedEntries);
+    saveDataToStorage(clients, pets, consultations, appointments, updatedPrescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, accountingEntries);
   };
 
   const deletePrescription = (id: number) => {
     const updatedPrescriptions = prescriptions.filter(prescription => prescription.id !== id);
     setPrescriptions(updatedPrescriptions);
-    saveDataToStorage(clients, pets, consultations, appointments, updatedPrescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, accountingEntries, recurringCharges, generatedEntries);
+    saveDataToStorage(clients, pets, consultations, appointments, updatedPrescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, accountingEntries);
   };
 
   const getPrescriptionById = (id: number) => prescriptions.find(p => p.id === id);
@@ -3634,47 +3502,13 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       })
       .reduce((sum, entry) => sum + entry.amount, 0);
     
-    // Calculer les charges récurrentes confirmées et payées pour la période
-    const recurringExpensesForPeriod = generatedEntries
-      .filter(entry => {
-        const recurringCharge = recurringCharges.find(c => c.id === entry.recurringChargeId);
-        return recurringCharge && 
-               recurringCharge.type === 'expense' && 
-               entry.status === 'confirmed' && 
-               entry.paymentStatus === 'paid' &&
-               entry.period >= startDate && 
-               entry.period <= endDate;
-      })
-      .reduce((total, entry) => {
-        const recurringCharge = recurringCharges.find(c => c.id === entry.recurringChargeId);
-        return total + (recurringCharge ? recurringCharge.amount : 0);
-      }, 0);
-    
-    // Calculer les recettes récurrentes confirmées et payées pour la période
-    const recurringRevenueForPeriod = generatedEntries
-      .filter(entry => {
-        const recurringCharge = recurringCharges.find(c => c.id === entry.recurringChargeId);
-        return recurringCharge && 
-               recurringCharge.type === 'revenue' && 
-               entry.status === 'confirmed' && 
-               entry.paymentStatus === 'paid' &&
-               entry.period >= startDate && 
-               entry.period <= endDate;
-      })
-      .reduce((total, entry) => {
-        const recurringCharge = recurringCharges.find(c => c.id === entry.recurringChargeId);
-        return total + (recurringCharge ? recurringCharge.amount : 0);
-      }, 0);
-    
     // Mettre à jour les breakdowns
     revenueBreakdown.manualEntries = manualRevenue;
-    revenueBreakdown.recurringCharges = recurringRevenueForPeriod;
     expenseBreakdown.manualEntries = manualExpenses;
-    expenseBreakdown.recurringCharges = recurringExpensesForPeriod;
     
     // Calculer les totaux finaux
-    const finalTotalRevenue = totalRevenue + manualRevenue + recurringRevenueForPeriod;
-    const finalTotalExpenses = totalExpenses + manualExpenses + recurringExpensesForPeriod;
+    const finalTotalRevenue = totalRevenue + manualRevenue;
+    const finalTotalExpenses = totalExpenses + manualExpenses;
     
     return {
       period,
@@ -3686,225 +3520,15 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     };
   };
 
-  // Fonctions de gestion des charges récurrentes
-  const addRecurringCharge = (chargeData: Omit<RecurringCharge, 'id' | 'createdAt' | 'lastGenerated'>) => {
-    const newCharge: RecurringCharge = {
-      ...chargeData,
-      id: Math.max(...recurringCharges.map(c => c.id), 0) + 1,
-      createdAt: new Date().toISOString()
-    };
-    
-    const updatedCharges = [...recurringCharges, newCharge];
-    setRecurringCharges(updatedCharges);
-    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, accountingEntries, updatedCharges, generatedEntries);
-    
-    return newCharge;
-  };
 
-  const updateRecurringCharge = (id: number, updates: Partial<RecurringCharge>) => {
-    const updatedCharges = recurringCharges.map(charge => 
-      charge.id === id ? { ...charge, ...updates } : charge
-    );
-    setRecurringCharges(updatedCharges);
-    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, accountingEntries, updatedCharges, generatedEntries);
-  };
 
-  const deleteRecurringCharge = (id: number) => {
-    const updatedCharges = recurringCharges.filter(charge => charge.id !== id);
-    setRecurringCharges(updatedCharges);
-    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, accountingEntries, updatedCharges, generatedEntries);
-  };
 
-  // Fonction pour générer les entrées récurrentes pour une période
-  const generateRecurringEntries = (startDate: string, endDate: string) => {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const newGeneratedEntries: GeneratedEntry[] = [];
 
-    recurringCharges
-      .filter(charge => charge.isActive)
-      .forEach(charge => {
-        const chargeStart = new Date(charge.startDate);
-        const chargeEnd = charge.endDate ? new Date(charge.endDate) : end;
-        
-        // Vérifier si la charge est active pour la période
-        if (chargeStart <= end && chargeEnd >= start) {
-          const periods = getRecurringPeriods(charge, start, end);
-          
-          periods.forEach(period => {
-            // Vérifier si une entrée n'a pas déjà été générée pour cette période
-            const existingEntry = generatedEntries.find(entry => 
-              entry.recurringChargeId === charge.id && entry.period === period
-            );
-            
-            if (!existingEntry) {
-              const generatedEntry: GeneratedEntry = {
-                id: Math.max(...generatedEntries.map(e => e.id), 0) + newGeneratedEntries.length + 1,
-                recurringChargeId: charge.id,
-                period,
-                status: 'pending',
-                generatedDate: new Date().toISOString(),
-                paymentStatus: 'unpaid',
-                paidDate: undefined
-              };
-              
-              newGeneratedEntries.push(generatedEntry);
-            }
-          });
-        }
-      });
 
-    if (newGeneratedEntries.length > 0) {
-      const updatedGeneratedEntries = [...generatedEntries, ...newGeneratedEntries];
-      setGeneratedEntries(updatedGeneratedEntries);
-      saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, accountingEntries, recurringCharges, updatedGeneratedEntries);
-    }
 
-    return newGeneratedEntries;
-  };
 
-  // Fonction pour confirmer une entrée générée
-  const confirmGeneratedEntry = (generatedEntryId: number, modifiedAmount?: number) => {
-    const generatedEntry = generatedEntries.find(e => e.id === generatedEntryId);
-    if (!generatedEntry) return;
 
-    const recurringCharge = recurringCharges.find(c => c.id === generatedEntry.recurringChargeId);
-    if (!recurringCharge) return;
 
-    const amount = modifiedAmount || recurringCharge.amount;
-    const entryDate = getEntryDateForPeriod(recurringCharge, generatedEntry.period);
-
-    // Créer l'entrée comptable
-    const accountingEntry = addAccountingEntry({
-      type: recurringCharge.type,
-      category: 'manual',
-      frequency: recurringCharge.frequency === 'quarterly' ? 'occasional' : recurringCharge.frequency,
-      description: recurringCharge.description,
-      amount,
-      date: entryDate,
-      source: recurringCharge.source,
-      notes: `Entrée récurrente: ${recurringCharge.name} (${generatedEntry.period})`
-    });
-
-    // Mettre à jour l'entrée générée
-    const updatedGeneratedEntries = generatedEntries.map(entry => 
-      entry.id === generatedEntryId 
-        ? { 
-            ...entry, 
-            status: 'confirmed' as const,
-            accountingEntryId: accountingEntry.id,
-            confirmedDate: new Date().toISOString(),
-            modifiedAmount: modifiedAmount
-          }
-        : entry
-    );
-    setGeneratedEntries(updatedGeneratedEntries);
-    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, accountingEntries, recurringCharges, updatedGeneratedEntries);
-  };
-
-  // Fonction pour annuler une entrée générée
-  const cancelGeneratedEntry = (generatedEntryId: number) => {
-    const updatedGeneratedEntries = generatedEntries.filter(entry => entry.id !== generatedEntryId);
-    setGeneratedEntries(updatedGeneratedEntries);
-    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, accountingEntries, recurringCharges, updatedGeneratedEntries);
-  };
-
-  // Fonction pour réinitialiser les charges récurrentes aux valeurs par défaut
-  const resetRecurringChargesToDefault = () => {
-    setRecurringCharges(defaultRecurringCharges);
-    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, accountingEntries, defaultRecurringCharges, generatedEntries);
-  };
-
-  // Fonction pour changer le statut de paiement d'une entrée générée
-  const updateGeneratedEntryPaymentStatus = (id: number, status: 'paid' | 'unpaid' | 'pending') => {
-    const updatedEntries = generatedEntries.map(entry => 
-      entry.id === id 
-        ? { 
-            ...entry, 
-            paymentStatus: status,
-            paidDate: status === 'paid' ? new Date().toISOString().split('T')[0] : undefined
-          } 
-        : entry
-    );
-    setGeneratedEntries(updatedEntries);
-    saveDataToStorage(clients, pets, consultations, appointments, prescriptions, farms, farmInterventions, vaccinations, vaccinationProtocols, antiparasitics, antiparasiticProtocols, stockItems, stockAlerts, stockMovements, accountingEntries, recurringCharges, updatedEntries);
-  };
-
-  // Fonction utilitaire pour obtenir les périodes de récurrence
-  const getRecurringPeriods = (charge: RecurringCharge, start: Date, end: Date): string[] => {
-    const periods: string[] = [];
-    const current = new Date(start);
-
-    while (current <= end) {
-      let shouldInclude = false;
-
-      switch (charge.frequency) {
-        case 'monthly':
-          if (charge.dayOfMonth) {
-            const targetDate = new Date(current.getFullYear(), current.getMonth(), charge.dayOfMonth);
-            if (targetDate >= start && targetDate <= end) {
-              shouldInclude = true;
-            }
-          } else {
-            shouldInclude = true;
-          }
-          break;
-        case 'quarterly':
-          if (charge.quarter) {
-            const quarterStart = new Date(current.getFullYear(), (charge.quarter - 1) * 3, 1);
-            if (quarterStart >= start && quarterStart <= end) {
-              shouldInclude = true;
-            }
-          }
-          break;
-        case 'annual':
-          if (charge.monthOfYear) {
-            const targetDate = new Date(current.getFullYear(), charge.monthOfYear - 1, 1);
-            if (targetDate >= start && targetDate <= end) {
-              shouldInclude = true;
-            }
-          }
-          break;
-      }
-
-      if (shouldInclude) {
-        periods.push(format(current, 'yyyy-MM'));
-      }
-
-      // Passer à la période suivante
-      switch (charge.frequency) {
-        case 'monthly':
-          current.setMonth(current.getMonth() + 1);
-          break;
-        case 'quarterly':
-          current.setMonth(current.getMonth() + 3);
-          break;
-        case 'annual':
-          current.setFullYear(current.getFullYear() + 1);
-          break;
-      }
-    }
-
-    return periods;
-  };
-
-  // Fonction utilitaire pour obtenir la date d'une entrée pour une période
-  const getEntryDateForPeriod = (charge: RecurringCharge, period: string): string => {
-    const [year, month] = period.split('-').map(Number);
-    
-    switch (charge.frequency) {
-      case 'monthly':
-        const day = charge.dayOfMonth || 1;
-        return format(new Date(year, month - 1, day), 'yyyy-MM-dd');
-      case 'quarterly':
-        return format(new Date(year, month - 1, 1), 'yyyy-MM-dd');
-      case 'annual':
-        const annualMonth = charge.monthOfYear || 1;
-        return format(new Date(year, annualMonth - 1, 1), 'yyyy-MM-dd');
-      default:
-        return format(new Date(year, month - 1, 1), 'yyyy-MM-dd');
-    }
-  };
 
   return (
     <ClientContext.Provider value={{
@@ -3923,8 +3547,6 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       stockAlerts,
       stockMovements,
       accountingEntries,
-      recurringCharges,
-      generatedEntries,
       addClient,
       addPet,
       addConsultation,
@@ -3944,14 +3566,6 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       calculateAutomaticRevenue,
       calculateAutomaticExpenses,
       generateAccountingSummary,
-      addRecurringCharge,
-      updateRecurringCharge,
-      deleteRecurringCharge,
-      generateRecurringEntries,
-      confirmGeneratedEntry,
-      cancelGeneratedEntry,
-      resetRecurringChargesToDefault,
-      updateGeneratedEntryPaymentStatus,
       updateClient,
       updatePet,
       updateConsultation,
@@ -4111,7 +3725,6 @@ export interface AccountingSummary {
     prescriptions: number;
     stockSales: number;
     manualEntries: number;
-    recurringCharges: number;
   };
   expenseBreakdown: {
     stockPurchases: number;
@@ -4121,44 +3734,10 @@ export interface AccountingSummary {
     insurance: number;
     other: number;
     manualEntries: number;
-    recurringCharges: number;
   };
 }
 
 // Interface pour les charges récurrentes
-export interface RecurringCharge {
-  id: number;
-  name: string;
-  description: string;
-  amount: number;
-  frequency: 'monthly' | 'annual' | 'quarterly';
-  type: 'revenue' | 'expense';
-  source: 'salary' | 'rent' | 'tax' | 'insurance' | 'other';
-  isActive: boolean;
-  dayOfMonth?: number; // Pour les charges mensuelles (1-31)
-  monthOfYear?: number; // Pour les charges annuelles (1-12)
-  quarter?: number; // Pour les charges trimestrielles (1-4)
-  startDate: string; // Date de début de la récurrence
-  endDate?: string; // Date de fin (optionnel)
-  notes?: string;
-  createdAt: string;
-  lastGenerated?: string; // Dernière date de génération
-}
-
-// Interface pour les entrées générées automatiquement
-export interface GeneratedEntry {
-  id: number;
-  recurringChargeId: number;
-  accountingEntryId?: number; // ID de l'entrée comptable créée
-  period: string; // Période pour laquelle elle a été générée
-  status: 'pending' | 'confirmed' | 'modified' | 'cancelled';
-  generatedDate: string;
-  confirmedDate?: string;
-  modifiedAmount?: number;
-  notes?: string;
-  paymentStatus: 'paid' | 'unpaid' | 'pending'; // Statut de paiement
-  paidDate?: string; // Date du paiement
-}
 
 export const useClients = () => {
   const context = useContext(ClientContext);

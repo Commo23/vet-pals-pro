@@ -9,6 +9,7 @@ import { NewAppointmentModal } from "@/components/forms/NewAppointmentModal";
 import { useClients, Appointment } from "@/contexts/ClientContext";
 import { useToast } from "@/hooks/use-toast";
 import { useDisplayPreference } from "@/hooks/use-display-preference";
+import { UnifiedCalendar } from '@/components/UnifiedCalendar';
 import React from "react";
 
 const statusStyles = {
@@ -89,6 +90,12 @@ export default function Appointments() {
       const today = new Date();
       const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
       matchesDate = appointmentDate >= today && appointmentDate <= weekFromNow;
+    } else if (filterDate === "month") {
+      const appointmentDate = new Date(appointment.date);
+      const today = new Date();
+      const currentMonth = today.getMonth();
+      const currentYear = today.getFullYear();
+      matchesDate = appointmentDate.getMonth() === currentMonth && appointmentDate.getFullYear() === currentYear;
     } else if (filterDate === "specific") {
       matchesDate = appointment.date === selectedDate;
     }
@@ -155,112 +162,125 @@ export default function Appointments() {
   }
 
   return (
-    <div className="container mx-auto px-6 py-8 space-y-8">
+    <div className="container mx-auto px-2 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 space-y-4 sm:space-y-6 lg:space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Gestion des Rendez-vous</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl sm:text-3xl font-bold">Gestion des Rendez-vous</h1>
+          <p className="text-muted-foreground text-sm sm:text-base">
             Planifiez et gérez tous vos rendez-vous vétérinaires
           </p>
         </div>
-        <Button onClick={() => setShowNewAppointment(true)} className="gap-2">
+        <Button onClick={() => setShowNewAppointment(true)} className="gap-2 w-full sm:w-auto">
           <Plus className="h-4 w-4" />
-          Nouveau Rendez-vous
+          <span className="hidden sm:inline">Nouveau Rendez-vous</span>
+          <span className="sm:hidden">Nouveau RDV</span>
         </Button>
       </div>
 
       {/* Toggle List / Calendrier */}
-      <div className="flex items-center gap-4">
-        <Button variant={viewMode==='list'?'default':'outline'} onClick={()=>setViewMode('list')}>Liste</Button>
-        <Button variant={viewMode==='calendar'?'default':'outline'} onClick={()=>setViewMode('calendar')}>Calendrier</Button>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+        <div className="flex gap-2">
+          <Button variant={viewMode==='list'?'default':'outline'} onClick={()=>setViewMode('list')} size="sm" className="flex-1 sm:flex-none">Liste</Button>
+          <Button variant={viewMode==='calendar'?'default':'outline'} onClick={()=>setViewMode('calendar')} size="sm" className="flex-1 sm:flex-none">Calendrier</Button>
+        </div>
         
         {viewMode === 'list' && (
-          <div className="flex gap-2 ml-4">
+          <div className="flex gap-2">
             <Button 
               size="sm" 
               variant={displayMode === 'cards' ? 'default' : 'outline'} 
               onClick={() => setDisplayMode('cards')}
-              className="gap-2"
+              className="gap-1 sm:gap-2 flex-1 sm:flex-none"
             >
-              <Grid className="h-4 w-4" />
-              Cartes
+              <Grid className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Cartes</span>
             </Button>
             <Button 
               size="sm" 
               variant={displayMode === 'table' ? 'default' : 'outline'} 
               onClick={() => setDisplayMode('table')}
-              className="gap-2"
+              className="gap-1 sm:gap-2 flex-1 sm:flex-none"
             >
-              <List className="h-4 w-4" />
-              Tableau
+              <List className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Tableau</span>
             </Button>
           </div>
         )}
       </div>
       {viewMode==='calendar' ? (
-        <>
-          {/* En-tête mois/année */}
-          <div className="flex items-center justify-between mb-2">
-            <Button size="sm" onClick={prevMonth}>&lt;</Button>
-            <div className="text-lg font-semibold">{currentDate.toLocaleString('fr-FR', { month: 'long', year: 'numeric' })}</div>
-            <Button size="sm" onClick={nextMonth}>&gt;</Button>
-          </div>
-          <div className="grid grid-cols-7 gap-1 mt-2">
-            {['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'].map(d=><div key={d} className="text-center font-medium">{d}</div>)}
-            {weeks.map((week,i)=><React.Fragment key={i}>
-              {week.map((d,j)=><div key={j} className="h-24 p-1 border">
-                {d>0 && <div className="text-sm font-medium">{d}</div>}
-                {d>0 && getAppointmentsForDate(`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`).map(app=><div key={app.id} className="text-xs mt-1 bg-blue-100 rounded px-1 truncate" title={`${app.time} ${app.clientName}`}>{app.time}</div>)}
-              </div>)}
-            </React.Fragment>)}
-          </div>
-        </>
+        <UnifiedCalendar
+          events={appointments.map(appointment => ({
+            id: appointment.id,
+            type: 'appointment' as const,
+            title: `${appointment.clientName} - ${appointment.petName}`,
+            time: appointment.time,
+            date: appointment.date,
+            status: appointment.status,
+            clientName: appointment.clientName,
+            petName: appointment.petName,
+          }))}
+          onEventClick={(event) => {
+            // Gérer le clic sur un rendez-vous
+            console.log('Appointment clicked:', event);
+          }}
+          onDateClick={(date) => {
+            setSelectedDate(date);
+          }}
+          onTimeSlotClick={(date, time) => {
+            // Ouvrir le modal de création de rendez-vous avec la date et l'heure pré-remplies
+            setShowNewAppointment(true);
+            // Vous pouvez ajouter une logique pour pré-remplir le formulaire
+          }}
+          showTimeSlots={true}
+          title="Calendrier des Rendez-vous"
+          icon={<Calendar className="h-5 w-5" />}
+        />
       ) : (
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-2 sm:gap-4 grid-cols-2 lg:grid-cols-4">
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-3 sm:p-4">
               <div className="flex items-center gap-2">
-                <Calendar className="h-5 w-5 text-blue-600" />
+                <Calendar className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
                 <div>
-                  <p className="text-sm text-muted-foreground">Aujourd'hui</p>
-                  <p className="text-2xl font-bold">{todayAppointments.length}</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">Aujourd'hui</p>
+                  <p className="text-lg sm:text-2xl font-bold">{todayAppointments.length}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
           
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-3 sm:p-4">
               <div className="flex items-center gap-2">
-                <Clock className="h-5 w-5 text-green-600" />
+                <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
                 <div>
-                  <p className="text-sm text-muted-foreground">À venir</p>
-                  <p className="text-2xl font-bold">{upcomingAppointments.length}</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">À venir</p>
+                  <p className="text-lg sm:text-2xl font-bold">{upcomingAppointments.length}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
           
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-3 sm:p-4">
               <div className="flex items-center gap-2">
-                <AlertCircle className="h-5 w-5 text-orange-600" />
+                <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600" />
                 <div>
-                  <p className="text-sm text-muted-foreground">En retard</p>
-                  <p className="text-2xl font-bold">{overdueAppointments.length}</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">En retard</p>
+                  <p className="text-lg sm:text-2xl font-bold">{overdueAppointments.length}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
           
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-3 sm:p-4">
               <div className="flex items-center gap-2">
-                <CheckCircle className="h-5 w-5 text-gray-600" />
+                <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
                 <div>
-                  <p className="text-sm text-muted-foreground">Total</p>
-                  <p className="text-2xl font-bold">{appointments.length}</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">Total</p>
+                  <p className="text-lg sm:text-2xl font-bold">{appointments.length}</p>
                 </div>
               </div>
             </CardContent>
@@ -270,14 +290,14 @@ export default function Appointments() {
 
       {/* Filtres */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="h-5 w-5" />
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
             Filtres et Recherche
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+        <CardContent className="space-y-3 sm:space-y-4">
+          <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             <div className="space-y-2">
               <Label>Recherche</Label>
               <div className="relative">
@@ -335,8 +355,9 @@ export default function Appointments() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Toutes les dates</SelectItem>
-                  <SelectItem value="today">Aujourd'hui</SelectItem>
+                  <SelectItem value="today">Ce jour</SelectItem>
                   <SelectItem value="week">Cette semaine</SelectItem>
+                  <SelectItem value="month">Ce mois</SelectItem>
                   <SelectItem value="specific">Date spécifique</SelectItem>
                 </SelectContent>
               </Select>

@@ -42,6 +42,7 @@ import { PetDossierModal } from '@/components/modals/PetDossierModal';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useReactToPrint } from 'react-to-print';
+import { UnifiedCalendar } from '@/components/UnifiedCalendar';
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -51,6 +52,43 @@ const getStatusColor = (status: string) => {
     case 'missed': return 'bg-orange-100 text-orange-800 border-orange-200';
     default: return 'bg-gray-100 text-gray-800 border-gray-200';
   }
+};
+
+const AntiparasiteCalendar: React.FC = () => {
+  const { antiparasitics, pets, clients } = useClients();
+  
+  // Convertir les antiparasites en événements pour le calendrier unifié
+  const antiparasiticEvents = useMemo(() => {
+    return antiparasitics.map(antiparasitic => ({
+      id: antiparasitic.id,
+      type: 'antiparasitic' as const,
+      title: antiparasitic.productName,
+      date: antiparasitic.nextDueDate,
+      status: antiparasitic.status,
+      clientName: clients.find(c => c.id === antiparasitic.clientId)?.name,
+      petName: pets.find(p => p.id === antiparasitic.petId)?.name,
+    }));
+  }, [antiparasitics, clients, pets]);
+
+  const handleEventClick = (event: any) => {
+    // Gérer le clic sur un événement antiparasite
+    console.log('Antiparasitic clicked:', event);
+  };
+
+  const handleDateClick = (date: string) => {
+    // Gérer le clic sur une date
+    console.log('Date clicked:', date);
+  };
+
+  return (
+    <UnifiedCalendar
+      events={antiparasiticEvents}
+      onEventClick={handleEventClick}
+      onDateClick={handleDateClick}
+      title="Calendrier Antiparasitaire"
+      icon={<Bug className="h-5 w-5" />}
+    />
+  );
 };
 
 const getStatusIcon = (status: string) => {
@@ -63,115 +101,6 @@ const getStatusIcon = (status: string) => {
   }
 };
 
-const AntiparasiteCalendar: React.FC = () => {
-  const { antiparasitics, pets, clients } = useClients();
-  console.log('Antiparasites page - antiparasitics:', antiparasitics);
-  const [currentDate, setCurrentDate] = useState(new Date());
-  
-  // Générer les jours du mois
-  const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-  const monthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-  const startDate = new Date(monthStart);
-  startDate.setDate(startDate.getDate() - monthStart.getDay());
-  
-  const days = [];
-  const current = new Date(startDate);
-  
-  while (current <= monthEnd || days.length < 42) {
-    days.push(new Date(current));
-    current.setDate(current.getDate() + 1);
-  }
-
-  // Grouper les antiparasites par date
-  const antiparasitesByDate = useMemo(() => {
-    const grouped: Record<string, any[]> = {};
-    antiparasitics.forEach(antiparasite => {
-      const dateKey = antiparasite.nextDueDate;
-      if (!grouped[dateKey]) grouped[dateKey] = [];
-      grouped[dateKey].push(antiparasite);
-    });
-    return grouped;
-  }, [antiparasitics]);
-
-  const navigateMonth = (direction: 'prev' | 'next') => {
-    const newDate = new Date(currentDate);
-    newDate.setMonth(currentDate.getMonth() + (direction === 'next' ? 1 : -1));
-    setCurrentDate(newDate);
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5" />
-            Calendrier Antiparasitaire
-          </CardTitle>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => navigateMonth('prev')}>
-              ←
-            </Button>
-            <span className="font-medium min-w-[140px] text-center">
-              {format(currentDate, 'MMMM yyyy', { locale: fr })}
-            </span>
-            <Button variant="outline" size="sm" onClick={() => navigateMonth('next')}>
-              →
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-7 gap-1 mb-4">
-          {['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'].map(day => (
-            <div key={day} className="p-2 text-center font-medium text-gray-500 text-sm">
-              {day}
-            </div>
-          ))}
-        </div>
-        <div className="grid grid-cols-7 gap-1">
-          {days.map((day, index) => {
-            const dateStr = format(day, 'yyyy-MM-dd');
-            const dayAntiparasites = antiparasitesByDate[dateStr] || [];
-            const isCurrentMonth = day.getMonth() === currentDate.getMonth();
-            const isToday = isSameDay(day, new Date());
-            
-            return (
-              <div
-                key={index}
-                className={`
-                  min-h-[80px] p-1 border rounded-lg
-                  ${isCurrentMonth ? 'bg-white' : 'bg-gray-50'}
-                  ${isToday ? 'ring-2 ring-primary' : ''}
-                `}
-              >
-                <div className={`text-sm ${isCurrentMonth ? 'text-gray-900' : 'text-gray-400'}`}>
-                  {day.getDate()}
-                </div>
-                {dayAntiparasites.length > 0 && (
-                  <div className="space-y-1">
-                    {dayAntiparasites.slice(0, 2).map((antiparasite, idx) => (
-                      <div
-                        key={idx}
-                        className={`text-xs p-1 rounded text-center ${getStatusColor(antiparasite.status)}`}
-                      >
-                        {antiparasite.productName.slice(0, 8)}...
-                      </div>
-                    ))}
-                    {dayAntiparasites.length > 2 && (
-                      <div className="text-xs text-gray-500 text-center">
-                        +{dayAntiparasites.length - 2} autres
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
-  );
-};
 
 
 export default function Antiparasites() {

@@ -21,6 +21,15 @@ export interface DisplayPreferences {
   antiparasitics: 'table' | 'cards';
 }
 
+export interface ScheduleSettings {
+  openingTime: string; // Format HH:MM
+  closingTime: string; // Format HH:MM
+  slotDuration: number; // Durée en minutes (15, 30, 45, 60)
+  lunchBreakStart?: string; // Format HH:MM
+  lunchBreakEnd?: string; // Format HH:MM
+  workingDays: string[]; // ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+}
+
 export interface Veterinarian {
   id: number;
   name: string;
@@ -43,6 +52,7 @@ export interface ClinicSettings {
   farmManagement: FarmManagementSettings;
   displayPreferences: DisplayPreferences;
   defaultConsultationPrice: number;
+  scheduleSettings: ScheduleSettings;
 }
 
 const SETTINGS_KEY = 'vetpro-clinicSettings';
@@ -99,6 +109,15 @@ const defaultDisplayPreferences: DisplayPreferences = {
   antiparasitics: 'table'
 };
 
+const defaultScheduleSettings: ScheduleSettings = {
+  openingTime: '08:00',
+  closingTime: '18:00',
+  slotDuration: 30,
+  lunchBreakStart: '12:00',
+  lunchBreakEnd: '13:00',
+  workingDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+};
+
 const defaultVeterinarians: Veterinarian[] = [
   { id: 1, name: 'Dr. Jean Dupont', isActive: true },
   { id: 2, name: 'Dr. Marie Martin', isActive: true },
@@ -120,7 +139,8 @@ const defaultSettings: ClinicSettings = {
   veterinarians: defaultVeterinarians,
   farmManagement: defaultFarmManagementSettings,
   displayPreferences: defaultDisplayPreferences,
-  defaultConsultationPrice: 150
+  defaultConsultationPrice: 150,
+  scheduleSettings: defaultScheduleSettings
 };
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -149,6 +169,10 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
           displayPreferences: {
             ...defaultDisplayPreferences,
             ...parsedSettings.displayPreferences
+          },
+          scheduleSettings: {
+            ...defaultScheduleSettings,
+            ...parsedSettings.scheduleSettings
           }
         };
         console.log('Settings chargés:', mergedSettings.veterinarians);
